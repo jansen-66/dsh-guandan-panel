@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const LIB = join(ROOT, 'lib')
-const PKG_ID = '@jansen-66/dsh-guandan-panel'
+const PKG_ID = 'dsh-guandan'
 
 /**
  * 掼蛋游戏资源打包：

@@ -5,7 +5,8 @@
 
 ## 使用操作说明
 
-用浏览器打开 `guandan/index.html` 也可直接开始一局掼蛋，无需后端（4 个 AI 玩家，纯前端单机）。界面为底部常驻游戏栏，整页即牌桌。
+- 插件安装：`dsh plugin --profile web add dsh-guandan`
+- 用浏览器打开 `guandan/index.html` 也可直接开始一局掼蛋，无需后端（4 个 AI 玩家，纯前端单机）。界面为底部常驻游戏栏，整页即牌桌。
 
 ### 界面布局
 
