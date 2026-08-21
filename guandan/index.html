@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>掼蛋 · 独立版</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <!-- 底部：常驻游戏栏（独占整页） -->
+  <div id="game-bar">
+    <div id="action-bar">
+      <button id="btn-pass" class="secondary-btn" disabled>过牌</button>
+      <button id="btn-play" class="primary-btn" disabled>出牌</button>
+    </div>
+    <div id="game-main">
+      <div id="main-center">
+        <div id="status-row">
+          <button id="btn-theme" title="切换主题">🌙</button>
+          <div id="counts" class="counts"></div>
+          <div id="turn-info" class="info-chip">准备中…</div>
+          <div id="game-info" class="info-chip">—</div>
+        </div>
+        <div id="hand-area">
+          <div id="my-hand"></div>
+        </div>
+      </div>
+      <div id="side-bar">
+        <button id="btn-new" class="ghost-btn">新局</button>
+        <button id="btn-log" class="ghost-btn">日志</button>
+        <button id="btn-cancel" class="ghost-btn">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 浮层：进贡 / 回贡 -->
+  <div id="tribute-modal" class="modal hidden">
+    <div class="modal-box">
+      <div id="tribute-content"></div>
+    </div>
+  </div>
+
+  <!-- 浮层：本局结束 -->
+  <div id="deal-over-modal" class="modal hidden">
+    <div class="modal-box" id="deal-over-box"></div>
+  </div>
+
+  <!-- 浮层：日志 -->
+  <div id="log-panel" class="log-panel hidden">
+    <div class="log-head">
+      <span>对局日志</span>
+      <button id="btn-log-close" class="ghost-btn">关闭</button>
+    </div>
+    <div id="log-content" class="log-content"></div>
+  </div>
+
+  <!-- 浮层：牌桌（点击"轮到你出牌"开关切换） -->
+  <div id="table-overlay" class="hidden">
+    <div id="table-overlay-body">
+      <!-- 左栏：组牌列表 -->
+      <div id="candidate-panel">
+        <div class="candidate-panel-head">
+          <span class="candidate-panel-title">组牌列表</span>
+          <button id="btn-table-close" class="ghost-btn">关闭</button>
+        </div>
+        <div id="candidate-list"></div>
+      </div>
+      <!-- 右栏：牌桌 -->
+      <main id="table-panel">
+        <!-- 队友 (上方) -->
+        <div id="pos-teammate" class="player-area pos-top">
+          <div class="player-info">
+            <span class="player-name">队友</span>
+            <span class="card-count">0</span>
+          </div>
+          <div class="last-play-area"></div>
+        </div>
+
+        <!-- 中间行：左(上家) + 牌桌中央 + 右(下家) -->
+        <div id="middle-row">
+          <div id="pos-left" class="player-area pos-left">
+            <div class="player-info">
+              <span class="player-name">上家</span>
+              <span class="card-count">0</span>
+            </div>
+            <div class="last-play-area"></div>
+          </div>
+          <div id="play-area">
+            <button id="table-turn-info" class="table-turn-btn">准备中…</button>
+          </div>
+          <div id="pos-right" class="player-area pos-right">
+            <div class="player-info">
+              <span class="player-name">下家</span>
+              <span class="card-count">0</span>
+            </div>
+            <div class="last-play-area"></div>
+          </div>
+        </div>
+
+        <!-- 自己 (下方) -->
+        <div id="my-area">
+          <div class="player-info">
+            <span class="player-name">自己</span>
+            <span class="card-count">0</span>
+          </div>
+          <div id="my-last-play" class="last-play-area"></div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- 提示 -->
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

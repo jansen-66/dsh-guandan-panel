@@ -1,0 +1,2 @@
+# 统一以 LF 行尾提交与检出，避免跨平台（Windows/Linux）构建脚本因 CRLF 失败
+* text=auto eol=lf
