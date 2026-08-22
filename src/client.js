@@ -26,7 +26,7 @@ export default function () {
       if (!slots) return
       // React / createRoot 由 build.mjs 的 bundle factory 注入到闭包（见 scripts/build.mjs）
       if (typeof React === 'undefined' || typeof createRoot === 'undefined') {
-        console.error('[hello-panel] React / createRoot 不可用，插件降级为空')
+        console.error('[guandan-panel] React / createRoot 不可用，插件降级为空')
         return
       }
 
@@ -47,7 +47,6 @@ export default function () {
   <div id="game-main">
     <div id="main-center">
       <div id="status-row">
-        <button id="btn-theme" title="切换主题">🌙</button>
         <div id="counts" class="counts"></div>
         <div id="turn-info" class="info-chip">准备中…</div>
         <div id="game-info" class="info-chip">—</div>
@@ -169,7 +168,7 @@ export default function () {
         if (typeof document === 'undefined') return () => {}
         if (document.querySelector(`style[data-plugin-css="${tagName}"]`)) return () => {}
         const tag = document.createElement('style')
-        tag.dataset.plugin = 'hello-panel'
+        tag.dataset.plugin = 'guandan-panel'
         tag.dataset.pluginCss = tagName
         tag.textContent = css
         document.head.appendChild(tag)
@@ -210,17 +209,27 @@ export default function () {
 .hp-sidebar-toggle { display: flex; align-items: center; gap: 6px; background: none; border: none;
   color: var(--dsw-alias-label-secondary); cursor: pointer; font-size: 13px; padding: 5px 8px; border-radius: 6px; }
 .hp-sidebar-toggle:hover { background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); }
-`, 'hello-panel')
+`, 'guandan-panel')
 
       // ---- 游戏启动（面板常驻，DOM 只注入一次；开局只触发一次）----
       let guandanInited = false // HTML 已注入 + app.js 已执行
       let guandanBooted = false // 已开局
       const overlayRef = { body: null }
 
+      // 跟随 DSH 主题：DSH 在 <body> 上切换 data-ds-dark-theme 标识深浅色（配合 --dsw-* 变量）。
+      // 游戏 CSS 经 scopeCss 作用域化后由 .gd-root[data-theme="dark"] 控制深色变量，
+      // 故把 DSH 的标识同步到游戏根节点即可，无需游戏自己维护主题。
+      let themeObserver = null
+      const syncGuandanTheme = () => {
+        if (!overlayRef.body) return
+        const dark = document.body.hasAttribute('data-ds-dark-theme')
+        overlayRef.body.setAttribute('data-theme', dark ? 'dark' : 'light')
+      }
+
       const ensureGuandan = () => {
         if (guandanInited) return true
         if (!GUANDAN_APP_SRC || !GUANDAN_CSS_SRC || !overlayRef.body) {
-          console.error('[hello-panel] 掼蛋资源缺失，无法启动')
+          console.error('[guandan-panel] 掼蛋资源缺失，无法启动')
           return false
         }
         try {
@@ -232,9 +241,15 @@ export default function () {
           const fn = new Function(GUANDAN_APP_SRC)
           fn()
           guandanInited = true
+          // 游戏注入后立即同步一次 DSH 主题，并监听 body 的 data-ds-dark-theme 变化
+          syncGuandanTheme()
+          if (!themeObserver) {
+            themeObserver = new MutationObserver(syncGuandanTheme)
+            themeObserver.observe(document.body, { attributes: true, attributeFilter: ['data-ds-dark-theme'] })
+          }
           return true
         } catch (e) {
-          console.error('[hello-panel] 掼蛋启动失败:', e)
+          console.error('[guandan-panel] 掼蛋启动失败:', e)
           return false
         }
       }
@@ -248,7 +263,7 @@ export default function () {
           }
           guandanBooted = true
         } catch (e) {
-          console.error('[hello-panel] 掼蛋开局失败:', e)
+          console.error('[guandan-panel] 掼蛋开局失败:', e)
         }
       }
 
@@ -268,6 +283,30 @@ export default function () {
         // 首次打开时开局
         React.useEffect(() => {
           if (open) bootGuandan()
+        }, [open])
+
+        // 空格键：联动牌桌中央 #table-turn-info（轮到自己时出牌/过牌，牌局结束时进下一副）。
+        // 仅游戏栏打开时监听；输入框聚焦时不拦截，并阻止空格滚动页面。
+        React.useEffect(() => {
+          if (!open) return
+          const onKey = (e) => {
+            const t = e.target
+            if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+            let btn = null
+            if (e.code === 'Space' || e.key === ' ') {
+              btn = document.getElementById('table-turn-info')
+            } else if (e.key === 'c' || e.key === 'C') {
+              btn = document.getElementById('btn-pass')
+            } else if (e.key === 'v' || e.key === 'V') {
+              // 游戏栏无独立牌桌按钮，靠点击游戏栏空白区切换牌桌浮层（走已有 toggle 逻辑）
+              btn = document.getElementById('game-bar')
+            }
+            if (!btn) return
+            e.preventDefault()
+            btn.click()
+          }
+          window.addEventListener('keydown', onKey)
+          return () => window.removeEventListener('keydown', onKey)
         }, [open])
 
         // 渲染完成后同步自身几何：left/right 跟随中间列 centerCol，
@@ -305,12 +344,13 @@ export default function () {
 
       // ---- 挂载根（自建，面板不依赖宿主布局）----
       const host = document.createElement('div')
-      host.setAttribute('data-hello-panel', '')
+      host.setAttribute('data-guandan-panel', '')
       document.body.appendChild(host)
       const root = createRoot(host)
       root.render(React.createElement(GameBar))
       if (typeof ctx.effect === 'function') {
         ctx.effect(() => () => {
+          if (themeObserver) { themeObserver.disconnect(); themeObserver = null }
           root.unmount()
           host.remove()
           const center = findCenterCol()

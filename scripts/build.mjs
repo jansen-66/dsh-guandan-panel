@@ -102,8 +102,8 @@ const clientBundle = `window.__ModuleLoader__.load({
 \t\tvar createRoot = __reactDomClient && typeof __reactDomClient.createRoot === "function"
 \t\t\t? __reactDomClient.createRoot.bind(__reactDomClient)
 \t\t\t: undefined;
-\t\tvar __guandanAppSrc = ${JSON.stringify(guandanBootSrc)};\n\t\tvar __guandanCssSrc = ${JSON.stringify(guandanCss)};\n\t\tvar __helloPanelPlugin = (function () ${body})();
-\t\texports.apply = __helloPanelPlugin.apply;
+\t\tvar __guandanAppSrc = ${JSON.stringify(guandanBootSrc)};\n\t\tvar __guandanCssSrc = ${JSON.stringify(guandanCss)};\n\t\tvar __guandanPanelPlugin = (function () ${body})();
+\t\texports.apply = __guandanPanelPlugin.apply;
 \t\t// inject 声明是 cordis 的等待清单：fiber 会等服务激活后才执行 apply。
 \t\texports.inject = ["slots", "connection"];
 \t\treturn module.exports;
