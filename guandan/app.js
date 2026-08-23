@@ -5134,43 +5134,44 @@
     };
     eventBus2.off("deal_over", onDealOver);
     eventBus2.on("deal_over", onDealOver);
-    while (dealsPlayed < maxDeals && game2.currentLevel < MAX_LEVEL) {
-      dealsPlayed++;
-      await playOneDeal(game2, players2, ui2);
-      ui2.addLog(`\u5DF2\u5B8C\u6210 ${dealsPlayed} \u526F\u724C`);
-      if (game2.gameState === "idle") {
-        const isGameEnd = game2.currentLevel >= MAX_LEVEL || maxDeals !== Infinity && dealsPlayed >= maxDeals;
-        ui2.setTurnInfo(isGameEnd ? "\u6E38\u620F\u7ED3\u675F" : "\u7B49\u5F85\u4E0B\u4E00\u526F");
-        await new Promise((resolve) => {
-          const nextBtn = document.getElementById("btn-next-deal");
-          const closeBtn = document.getElementById("btn-close-deal");
-          if (!nextBtn) {
-            resolve();
-            return;
-          }
-          nextBtn.onclick = () => {
-            nextBtn.onclick = null;
-            if (closeBtn) closeBtn.onclick = null;
-            if (isGameEnd && ui2.onNewGame) {
-              document.getElementById("deal-over-modal").classList.add("hidden");
-              ui2.onNewGame();
-            } else {
-              document.getElementById("deal-over-modal").classList.add("hidden");
+    try {
+      while (dealsPlayed < maxDeals && game2.currentLevel < MAX_LEVEL) {
+        dealsPlayed++;
+        await playOneDeal(game2, players2, ui2);
+        ui2.addLog(`\u5DF2\u5B8C\u6210 ${dealsPlayed} \u526F\u724C`);
+        if (game2.gameState === "idle") {
+          const isGameEnd = game2.currentLevel >= MAX_LEVEL || maxDeals !== Infinity && dealsPlayed >= maxDeals;
+          ui2.setTurnInfo(isGameEnd ? "\u6E38\u620F\u7ED3\u675F" : "\u7B49\u5F85\u4E0B\u4E00\u526F");
+          await new Promise((resolve) => {
+            const nextBtn = document.getElementById("btn-next-deal");
+            const closeBtn = document.getElementById("btn-close-deal");
+            if (!nextBtn) {
               resolve();
+              return;
             }
-          };
-          if (closeBtn) {
-            closeBtn.onclick = () => {
-              document.getElementById("deal-over-modal").classList.add("hidden");
-              document.getElementById("btn-next-deal-header").classList.remove("hidden");
-              window._dealOverResolve = resolve;
+            nextBtn.onclick = () => {
+              nextBtn.onclick = null;
+              if (closeBtn) closeBtn.onclick = null;
+              if (isGameEnd && ui2.onNewGame) {
+                document.getElementById("deal-over-modal").classList.add("hidden");
+                ui2.onNewGame();
+              } else {
+                document.getElementById("deal-over-modal").classList.add("hidden");
+                resolve();
+              }
             };
-          }
-        });
+            if (closeBtn) {
+              closeBtn.onclick = () => {
+                document.getElementById("deal-over-modal").classList.add("hidden");
+              };
+            }
+          });
+        }
+        if (maxDeals !== Infinity && dealsPlayed >= maxDeals) break;
       }
-      if (maxDeals !== Infinity && dealsPlayed >= maxDeals) break;
+    } finally {
+      eventBus2.off("deal_over", onDealOver);
     }
-    eventBus2.off("deal_over", onDealOver);
     let reason = game2.currentLevel >= MAX_LEVEL ? "\u7EA7\u724C\u5347\u81F3\u6700\u9AD8(A)" : `\u5DF2\u5B8C\u6210 ${maxDeals} \u526F\u724C`;
     ui2.addLog(`\u6E38\u620F\u7ED3\u675F (${reason})\uFF0C\u5171 ${dealsPlayed} \u526F\u724C`);
     ui2.setTurnInfo("\u6E38\u620F\u7ED3\u675F");
@@ -5279,12 +5280,12 @@
             return;
           }
           const modal = this._el.dealOverModal;
+          const nextBtn = document.getElementById("btn-next-deal");
+          if (nextBtn) {
+            nextBtn.click();
+            return;
+          }
           if (modal && !modal.classList.contains("hidden")) {
-            const nextBtn = document.getElementById("btn-next-deal");
-            if (nextBtn) {
-              nextBtn.click();
-              return;
-            }
             modal.classList.add("hidden");
           }
         });

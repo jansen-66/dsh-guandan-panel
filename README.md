@@ -4,6 +4,7 @@
 这是一个 DSH（DeepSeek IDE）web 插件包 `dsh-guandan`（Cordis 插件），实际功能是把独立的「掼蛋」纸牌游戏作为底部面板嵌入 DSH 界面：侧栏底部出现「♥️ 掼蛋游戏」按钮，点击打开 96px 高的游戏栏（占用工作区底部布局，向上推中间列，不遮左侧栏）。游戏为纯前端单机版（4 个 AI 玩家，无需后端）。
 
 ## 更新说明
+- v0.1.4 修复牌局结束点击关闭后，无法继续下一局的问题；贡牌时加入按空格确认
 - v0.1.3 插件加入绑定键盘控制：空格，C，V；主题切换直接跟随DSH设置
 - v0.1.2 同步npm，可通过 `dsh plugin --profile web add dsh-guandan` 安装
 - v0.1.1 初始版本，基本功能，可直接通过github安装
@@ -12,7 +13,7 @@
 
 - 插件安装：`dsh plugin --profile web add dsh-guandan`
 - 插件已经绑定键盘控制
-  - 空格 → #table-turn-info：轮到自己时出牌/过牌，牌局结束进下一副。
+  - 空格 → #table-turn-info：轮到自己时出牌/过牌，牌局结束进下一副，贡牌时确认。
   - C → #btn-pass：过牌。
   - V → 切换牌桌浮层（#table-overlay 显示/隐藏）。
 - 用浏览器打开 `guandan/index.html` 也可直接开始一局掼蛋，无需后端（4 个 AI 玩家，纯前端单机）。界面为底部常驻游戏栏，整页即牌桌。

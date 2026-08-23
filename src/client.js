@@ -286,6 +286,7 @@ export default function () {
         }, [open])
 
         // 空格键：联动牌桌中央 #table-turn-info（轮到自己时出牌/过牌，牌局结束时进下一副）。
+        // 贡牌弹窗显示时，空格键确认贡牌。
         // 仅游戏栏打开时监听；输入框聚焦时不拦截，并阻止空格滚动页面。
         React.useEffect(() => {
           if (!open) return
@@ -294,7 +295,13 @@ export default function () {
             if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
             let btn = null
             if (e.code === 'Space' || e.key === ' ') {
-              btn = document.getElementById('table-turn-info')
+              // 贡牌弹窗显示时，空格键确认贡牌
+              const tributeModal = document.getElementById('tribute-modal')
+              if (tributeModal && !tributeModal.classList.contains('hidden')) {
+                btn = document.getElementById('tribute-ok')
+              } else {
+                btn = document.getElementById('table-turn-info')
+              }
             } else if (e.key === 'c' || e.key === 'C') {
               btn = document.getElementById('btn-pass')
             } else if (e.key === 'v' || e.key === 'V') {
