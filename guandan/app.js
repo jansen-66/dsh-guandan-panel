@@ -5306,15 +5306,17 @@
       });
     }
     _clearSelection() {
-      if (this._selectedIndices.size === 0) return;
+      if (this._selectedIndices.size === 0 && this._selectedCandidates.size === 0) return;
       this._selectedIndices.clear();
+      this._selectedCandidates.clear();
       this._el.myHand.innerHTML = this._renderHand(this._myHand, this._isMyTurn, this._selectedIndices);
+      if (this._tableOpen) this._renderCandidates();
     }
     get llmConfig() {
       return null;
     }
     get aiDelay() {
-      return 0;
+      return 300;
     }
     updateLLMPanel() {
     }
@@ -5464,6 +5466,43 @@
         }
       });
     }
+    // 找出候选组牌（组牌列表）中能拼成给定出牌集合的组，返回其下标
+    _matchCandidateIndices(cards) {
+      if (!cards || cards.length === 0) return [];
+      const key = (c) => `${c.value}|${c.suit}`;
+      const need = /* @__PURE__ */ new Map();
+      for (const c of cards) {
+        const k = key(c);
+        need.set(k, (need.get(k) || 0) + 1);
+      }
+      const consumed = /* @__PURE__ */ new Map();
+      const result = [];
+      for (let i = 0; i < this._candidates.length; i++) {
+        const cand = this._candidates[i];
+        if (!cand || !cand.cards || cand.cards.length === 0) continue;
+        const tmp = /* @__PURE__ */ new Map();
+        let ok = true;
+        for (const c of cand.cards) {
+          const k = key(c);
+          const left = (need.get(k) || 0) - (consumed.get(k) || 0) - (tmp.get(k) || 0);
+          if (left <= 0) {
+            ok = false;
+            break;
+          }
+          tmp.set(k, (tmp.get(k) || 0) + 1);
+        }
+        if (ok) {
+          for (const c of cand.cards) {
+            const k = key(c);
+            consumed.set(k, (consumed.get(k) || 0) + 1);
+          }
+          result.push(i);
+        }
+      }
+      let covered = 0;
+      for (const n of consumed.values()) covered += n;
+      return covered === cards.length ? result : [];
+    }
     /** 向选中集合添加/移除指定牌（多选叠加） */
     _selectCards(cards, add) {
       const remaining = cards.slice();
@@ -5487,6 +5526,9 @@
       this._candidates = Array.isArray(candidates) ? candidates : [];
       if (decision && decision.action === "play" && decision.cards) {
         this._selectCardsLike(decision.cards);
+        for (const i of this._matchCandidateIndices(decision.cards)) {
+          this._selectedCandidates.add(i);
+        }
       }
       this.updateHand(hand, true);
       this._enableButtons();

@@ -46,11 +46,11 @@
   --accent-2: #34c9a0;
   --text: #e8ecf4;
   --muted: #93a1bd;
-  --card-bg: #2b3445;
-  --card-border: #45516b;
+  --card-bg: #2e2b25;
+  --card-border: #4a463c;
   --card-shadow: 0 1px 3px rgba(0, 0, 0, .45);
   --red: #ff6b78;
-  --black: #e6ebf2;
+  --black: #7fdcb4;
   /* 通用控件 */
   --btn-bg: #2a3348;
   --btn-bg-hover: #36415c;
@@ -68,7 +68,7 @@
   --panel-bg: #232b3d;
   --panel-border: #3a465e;
   --panel-hover: #2c364e;
-  --highlight: #ffd76a;
+  --highlight: #e6b34d;
   /* 顶部浏览器栏（独立版） */
   --toolbar-bg: #161b27;
   --toolbar-border: #2a3140;
@@ -193,6 +193,31 @@ body {
 }
 .turn-hint { margin-left: auto; text-align: right; cursor: pointer; user-select: none; }
 
+/* 第一行右侧信息组：快捷键提示 + 版本号（靠右） */
+.status-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.shortcut-hint {
+  font-size: 11px;
+  line-height: 1;
+  color: var(--muted);
+  opacity: .6;
+  white-space: nowrap;
+  user-select: none;
+}
+/* 版本号：弱化标签 */
+.version-tag {
+  font-size: 11px;
+  line-height: 1;
+  color: var(--muted);
+  opacity: .65;
+  white-space: nowrap;
+  user-select: none;
+}
+
 /* 主题切换按钮：无边框小图标 */
 #btn-theme {
   border: none;
@@ -287,7 +312,7 @@ body {
 }
 .card.clickable { cursor: pointer; }
 .card.clickable:hover { transform: translateY(-8px); }
-.card.selected { transform: translateY(-16px); box-shadow: 0 4px 12px rgba(52, 201, 160, .45); border-color: var(--accent); }
+.card.selected { transform: translateY(-16px); box-shadow: 0 4px 12px color-mix(in srgb, var(--highlight) 40%, transparent); border-color: var(--highlight); }
 .card.red { color: var(--red); }
 .card.black { color: var(--black); }
 .card.wild {
@@ -296,7 +321,7 @@ body {
 }
 .card-value-tl, .card-value-br {
   position: absolute;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
   line-height: 1;
 }
@@ -306,7 +331,7 @@ body {
   position: absolute;
   top: 50%; left: 50%;
   transform: translate(-50%, -50%);
-  font-size: 16px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -329,8 +354,8 @@ body {
   border: 2px solid var(--card-border);
   box-shadow: var(--card-shadow);
 }
-.card-mini .cm-rank { font-size: 10px; line-height: 1; }
-.card-mini .cm-suit { font-size: 11px; line-height: 1.2; }
+.card-mini .cm-rank { font-size: 12px; line-height: 1; }
+.card-mini .cm-suit { font-size: 10px; line-height: 1.2; }
 .card-mini.red { color: var(--red); }
 .card-mini.black { color: var(--black); }
 
@@ -348,7 +373,7 @@ body {
   border: 2px solid var(--card-border);
   box-shadow: var(--card-shadow);
 }
-.card-max .cm-rank { font-size: 15px; line-height: 1; }
+.card-max .cm-rank { font-size: 18px; line-height: 1; }
 .card-max .cm-suit { font-size: 16px; line-height: 1.3; }
 .card-max.red { color: var(--red); }
 .card-max.black { color: var(--black); }
@@ -379,7 +404,7 @@ body {
 .candidate-row { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0; }
 .candidate-row .card { cursor: pointer; }
 .candidate-row .card:hover { transform: translateY(-6px); }
-.candidate-row .card.selected { transform: translateY(-10px); border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.candidate-row .card.selected { transform: translateY(-10px); border-color: var(--highlight); box-shadow: 0 0 0 2px var(--highlight); }
 .deal-over-body .modal-actions { justify-content: center; }
 
 /* ============ 日志面板 ============ */
@@ -429,31 +454,31 @@ body {
 
 /* 左栏：组牌列表 */
 #candidate-panel {
-  flex: 0 0 180px;
+  flex: 0 0 186px;
   align-self: flex-end;          /* 面板靠底部排列 */
   max-height: 100%;
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: color-mix(in srgb, var(--bar-bg) 92%, transparent);
-  backdrop-filter: blur(6px);
-  border: 1px solid var(--bar-border);
-  border-radius: 12px;
+  /* 背景固定为牌桌同款深绿桌面，不随主题变化 */
+  background: linear-gradient(160deg, #1a5c38, #0f3d24);
+  border: 2px solid rgba(45, 106, 67, .98);
+  border-radius: 16px;
   padding: 8px;
-  box-shadow: 0 8px 24px rgba(47, 62, 66, .12);
+  box-shadow: inset 0 0 40px rgba(0, 0, 0, .35), 0 8px 24px rgba(0, 0, 0, .25);
 }
 .candidate-panel-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding-bottom: 6px;
-  border-bottom: 1px solid var(--bar-border);
+  border-bottom: 1px solid rgba(255, 255, 255, .22);
   margin-bottom: 6px;
 }
 .candidate-panel-title {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
-  color: var(--muted);
+  color: #cfe8d8;
 }
 .candidate-panel-head .ghost-btn {
   padding: 3px 10px;
@@ -471,22 +496,24 @@ body {
   display: flex;
   align-items: center;
   gap: 7px;
-  background: var(--panel-bg);
-  border: 1px solid var(--panel-border);
-  border-radius: 8px;
+  /* 复用牌桌中央按钮（table-turn-btn）的视觉：半透明黑底 + 白边 */
+  background: rgba(0, 0, 0, .35);
+  border: 1px solid rgba(255, 255, 255, .25);
+  border-radius: 14px;
+  color: #fef3c7;
   padding: 3px 7px;
   cursor: pointer;
   transition: background .15s, border-color .15s, box-shadow .15s;
 }
-.candidate-group:hover { background: var(--panel-hover); border-color: var(--accent); }
-.candidate-group.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.candidate-group:hover { background: rgba(0, 0, 0, .5); border-color: rgba(255, 255, 255, .4); }
+.candidate-group.selected { border-color: var(--highlight); box-shadow: 0 0 0 1px var(--highlight); }
 .candidate-type {
   flex: 0 0 auto;
-  font-size: 11px;
-  color: var(--muted);
+  font-size: 12px;
+  color: rgba(255, 255, 255, .7);
 }
 .candidate-cards { display: flex; flex-wrap: wrap; gap: 1px; }
-.candidate-empty { color: var(--muted); font-size: 12px; padding: 10px 4px; }
+.candidate-empty { color: rgba(255, 255, 255, .7); font-size: 12px; padding: 10px 4px; }
 
 /* 右栏：牌桌（保证正方形，边长取可用宽/高较小者） */
 #table-panel {
@@ -546,7 +573,7 @@ body {
 #middle-row {
   flex: 1 1 auto;
   display: flex;
-  align-items: stretch;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
   min-height: 0;
@@ -558,6 +585,7 @@ body {
   justify-content: center;
   align-items: flex-start;
   min-width: 90px;
+  min-height: 120px;   /* 背景高度与中央出牌区按钮一致 */
 }
 #pos-right {
   flex: 0 0 auto;
@@ -565,6 +593,7 @@ body {
   justify-content: center;
   align-items: flex-end;
   min-width: 90px;
+  min-height: 120px;   /* 背景高度与中央出牌区按钮一致 */
 }
 /* 牌桌中央 */
 #play-area {

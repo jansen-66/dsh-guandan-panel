@@ -33,6 +33,8 @@ export default function () {
       // ---- 掼蛋游戏资源（由 build.mjs 注入到 bundle 闭包）----
       const GUANDAN_APP_SRC = typeof __guandanAppSrc === 'string' ? __guandanAppSrc : null
       const GUANDAN_CSS_SRC = typeof __guandanCssSrc === 'string' ? __guandanCssSrc : null
+      // 插件版本号（由 build.mjs 从 package.json 读取并注入闭包，改版本号后重新 build 即自动同步）
+      const GUANDAN_VERSION = typeof __guandanVersion === 'string' ? __guandanVersion : 'dev'
 
       // 游戏面板高度：与原版 #game-bar 高度一致
       const PANEL_HEIGHT = 96
@@ -50,6 +52,10 @@ export default function () {
         <div id="counts" class="counts"></div>
         <div id="turn-info" class="info-chip">准备中…</div>
         <div id="game-info" class="info-chip">—</div>
+        <div class="status-right">
+          <span class="shortcut-hint">空格-出牌 C-过牌 N-取消 V-牌桌</span>
+          <span class="version-tag" title="掼蛋版本">v${GUANDAN_VERSION}</span>
+        </div>
       </div>
       <div id="hand-area">
         <div id="my-hand"></div>
@@ -304,6 +310,8 @@ export default function () {
               }
             } else if (e.key === 'c' || e.key === 'C') {
               btn = document.getElementById('btn-pass')
+            } else if (e.key === 'n' || e.key === 'N') {
+              btn = document.getElementById('btn-cancel')
             } else if (e.key === 'v' || e.key === 'V') {
               // 游戏栏无独立牌桌按钮，靠点击游戏栏空白区切换牌桌浮层（走已有 toggle 逻辑）
               btn = document.getElementById('game-bar')
