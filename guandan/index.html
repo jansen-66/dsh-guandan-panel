@@ -114,5 +114,31 @@
   <div id="toast" class="toast hidden"></div>
 
   <script src="app.js"></script>
+
+  <!-- 按键绑定（与插件保持一致） -->
+  <script>
+    window.addEventListener('keydown', function (e) {
+      var t = e.target
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+      var btn = null
+      if (e.code === 'Space' || e.key === ' ') {
+        var tributeModal = document.getElementById('tribute-modal')
+        if (tributeModal && !tributeModal.classList.contains('hidden')) {
+          btn = document.getElementById('tribute-ok')
+        } else {
+          btn = document.getElementById('table-turn-info')
+        }
+      } else if (e.key === 'c' || e.key === 'C') {
+        btn = document.getElementById('btn-pass')
+      } else if (e.key === 'n' || e.key === 'N') {
+        btn = document.getElementById('btn-cancel')
+      } else if (e.key === 'v' || e.key === 'V') {
+        btn = document.getElementById('game-bar')
+      }
+      if (!btn) return
+      e.preventDefault()
+      btn.click()
+    })
+  </script>
 </body>
 </html>

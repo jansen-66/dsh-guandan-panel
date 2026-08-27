@@ -3255,7 +3255,7 @@
   function getEligibleReturnCards(hand) {
     if (!hand || hand.length === 0) return [];
     const eligibleCards = hand.filter(
-      (c) => c.value <= 10 && c.level_value !== 15
+      (c) => c.value < 10 && c.level_value !== 15
     );
     return sortCardsAsc(eligibleCards);
   }
@@ -3273,8 +3273,8 @@
     if (card.level_value === 15) {
       return { valid: false, reason: "\u7EA7\u724C\u4E0D\u80FD\u8FD8\u8D21" };
     }
-    if (card.value > 10) {
-      return { valid: false, reason: "\u8FD8\u8D21\u724C\u5FC5\u987B\u5C0F\u4E8E\u7B49\u4E8E10\uFF08\u4E14\u975E\u7EA7\u724C\uFF09" };
+    if (card.value >= 10) {
+      return { valid: false, reason: "\u8FD8\u8D21\u724C\u5FC5\u987B\u5C0F\u4E8E10\uFF08\u4E14\u975E\u7EA7\u724C\uFF09" };
     }
     return { valid: true };
   }
@@ -3333,12 +3333,13 @@
   function selectReturnCard(hand) {
     if (!hand || hand.length === 0) return null;
     const eligibleCards = hand.filter(
-      (c) => c.value <= 10 && c.level_value !== 15
+      (c) => c.value < 10 && c.level_value !== 15
     );
     if (eligibleCards.length === 0) {
       return sortCards(hand)[0];
     }
     const groups = groupOther(hand);
+    const eligibleKeys = new Set(eligibleCards.map((c) => `${c.value}:${c.suit}`));
     const protectedCards = /* @__PURE__ */ new Set();
     for (const group of groups) {
       const type = group.type;
@@ -3352,7 +3353,7 @@
     const trueSingles = singleGroups.filter((g) => {
       const card = g.cards[0];
       const key = `${card.value}:${card.suit}`;
-      return !protectedCards.has(key);
+      return !protectedCards.has(key) && eligibleKeys.has(key);
     });
     if (trueSingles.length > 0) {
       const sorted = trueSingles.sort((a, b) => {
@@ -3362,7 +3363,9 @@
       });
       return sorted[0].cards[0];
     }
-    const pairGroups = groups.filter((g) => g.type === "PAIR");
+    const pairGroups = groups.filter(
+      (g) => g.type === "PAIR" && eligibleKeys.has(`${g.cards[0].value}:${g.cards[0].suit}`)
+    );
     const safePairs = pairGroups;
     if (safePairs.length > 0) {
       const sorted = safePairs.sort((a, b) => {
@@ -3372,7 +3375,9 @@
       });
       return sorted[0].cards[0];
     }
-    const tripleGroups = groups.filter((g) => g.type === "TRIPLE");
+    const tripleGroups = groups.filter(
+      (g) => g.type === "TRIPLE" && eligibleKeys.has(`${g.cards[0].value}:${g.cards[0].suit}`)
+    );
     const safeTriples = tripleGroups;
     if (safeTriples.length > 0) {
       const sorted = safeTriples.sort((a, b) => {
@@ -3388,7 +3393,7 @@
     const nonStraightCards = [];
     for (const group of nonBombGroups) {
       for (const card of group.cards) {
-        nonStraightCards.push(card);
+        if (eligibleKeys.has(`${card.value}:${card.suit}`)) nonStraightCards.push(card);
       }
     }
     if (nonStraightCards.length > 0) {
@@ -5214,6 +5219,8 @@
         turnInfo: document.getElementById("turn-info"),
         counts: document.getElementById("counts"),
         myHand: document.getElementById("my-hand"),
+        handArea: document.getElementById("hand-area"),
+        statusRow: document.getElementById("status-row"),
         btnPlay: document.getElementById("btn-play"),
         btnPass: document.getElementById("btn-pass"),
         btnNew: document.getElementById("btn-new"),
@@ -5302,6 +5309,7 @@
           this._syncSidePlayAreas();
           this._renderCandidates();
           this._updateTableInfo();
+          this._refreshHandLayout();
         }
       });
     }
@@ -5388,26 +5396,37 @@
           const sb = b.card.suit === "JOKER" ? 4 : SUIT_ORDER[b.card.suit] ?? 4;
           return sa - sb;
         });
+        const isVertical = this._isVerticalHandLayout();
+        let groupHtml = "";
         items.forEach((item, ci) => {
           const selected = selectedSet ? selectedSet.has(item.idx) : false;
-          let ml;
-          if (gi === 0 && ci === 0) ml = 0;
-          else if (ci === 0) ml = 0.2 * CARD_W;
-          else ml = -0.33 * CARD_W;
           const extra = (clickable ? "clickable " : "") + (selected ? "selected" : "");
-          html += this._renderCard(item.card, item.idx, extra, ml);
+          if (isVertical) {
+            const mt = ci === 0 ? 0 : -14.7;
+            groupHtml += this._renderCard(item.card, item.idx, extra, 0, mt);
+          } else {
+            let ml;
+            if (gi === 0 && ci === 0) ml = 0;
+            else if (ci === 0) ml = 0.2 * CARD_W;
+            else ml = -0.33 * CARD_W;
+            groupHtml += this._renderCard(item.card, item.idx, extra, ml);
+          }
         });
+        html += `<div class="card-group${isVertical ? " vertical" : ""}">${groupHtml}</div>`;
       });
       return html;
     }
-    _renderCard(card, idx, extra, marginLeft) {
+    _renderCard(card, idx, extra, marginLeft, marginTop) {
       const color = getCardColorClass(card);
       const wild = isWildCard(card) ? "wild" : "";
       const rank = getRankText(card);
       const suit = getSuitText(card);
       const idxAttr = idx !== void 0 ? `data-idx="${idx}"` : "";
-      const ml = marginLeft !== void 0 ? `style="margin-left:${marginLeft}px"` : "";
-      return `<div class="card ${color} ${wild} ${extra}" ${idxAttr} ${ml}><span class="card-value-tl">${rank}</span><span class="card-suit">${suit}</span><span class="card-value-br">${rank}</span></div>`;
+      const styleParts = [];
+      if (marginLeft !== void 0) styleParts.push(`margin-left:${marginLeft}px`);
+      if (marginTop !== void 0) styleParts.push(`margin-top:${marginTop}px`);
+      const style = styleParts.length > 0 ? `style="${styleParts.join(";")}"` : "";
+      return `<div class="card ${color} ${wild} ${extra}" ${idxAttr} ${style}><span class="card-value-tl">${rank}</span><span class="card-suit">${suit}</span><span class="card-value-br">${rank}</span></div>`;
     }
     _renderCardMini(card) {
       const color = getCardColorClass(card);
@@ -5420,6 +5439,21 @@
       const rank = getRankText(card);
       const suit = getSuitText(card);
       return `<span class="card-max ${color}"><span class="cm-rank">${rank}</span><span class="cm-suit">${suit}</span></span>`;
+    }
+    /** 手牌区是否使用竖向排列：牌桌浮层打开且 table-panel 宽度 > 360 */
+    _isVerticalHandLayout() {
+      return this._tableOpen && this._getTableCardSize() !== "mini";
+    }
+    /** 刷新手牌布局（横/竖切换） */
+    _refreshHandLayout() {
+      const isVertical = this._isVerticalHandLayout();
+      this._el.myHand.innerHTML = this._renderHand(this._myHand, this._isMyTurn, this._selectedIndices);
+      this._el.myHand.classList.toggle("vertical-mode", isVertical);
+      this._el.handArea.classList.toggle("vertical-mode", isVertical);
+    }
+    /** 隐藏/显示第一行信息 */
+    _toggleStatusRow(hide) {
+      this._el.statusRow.classList.toggle("hidden", hide);
     }
     /** 按牌桌（正方形）边长选择牌大小：<360 mini / 360~540 游戏栏普通牌 / >540 max 大号 */
     _getTableCardSize() {
@@ -5530,6 +5564,7 @@
           this._selectedCandidates.add(i);
         }
       }
+      this._cardTracker = cardTracker;
       this.updateHand(hand, true);
       this._enableButtons();
       this.setTurnInfo("\u8F6E\u5230\u4F60\u51FA\u724C");
@@ -5537,6 +5572,7 @@
         this._renderCandidates();
         this._updateTableInfo();
       }
+      this._renderCardTracker();
       this._actionPromise = new Promise((res) => {
         this._resolve = res;
       });
@@ -5552,7 +5588,9 @@
       this._disableButtons();
       this._selectedIndices.clear();
       this._selectedCandidates.clear();
+      this._cardTracker = null;
       this.updateHand(this._myHand, false);
+      this._renderCardTracker();
     }
     _enableButtons() {
       this._el.btnPlay.disabled = false;
@@ -5561,6 +5599,61 @@
     _disableButtons() {
       this._el.btnPlay.disabled = true;
       this._el.btnPass.disabled = true;
+    }
+    // 记牌器张数颜色：4-6 红色，2-3 黄色，1 绿色，否则默认
+    _countClass(count) {
+      if (count > 6) return "";
+      if (count > 3) return " red";
+      if (count > 1) return " yellow";
+      if (count > 0) return " green";
+      return "";
+    }
+    // ---------- 记牌器（竖排时显示在手牌区左侧） ----------
+    _renderCardTracker() {
+      let el = this._cardTrackerEl;
+      if (!el) {
+        el = document.createElement("div");
+        el.id = "card-tracker";
+        const handArea = document.getElementById("hand-area");
+        if (handArea) handArea.prepend(el);
+        this._cardTrackerEl = el;
+      }
+      const isVertical = this._isVerticalHandLayout();
+      const tracker = this._cardTracker;
+      if (!tracker || !isVertical) {
+        el.innerHTML = "";
+        return;
+      }
+      const remaining = tracker.remaining || {};
+      const levelVal = tracker.levelCardValue;
+      const wild = tracker.WildCardCount || 0;
+      const levelRemaining = (remaining[levelVal] || 0) - wild;
+      const myHand = this._myHand || [];
+      const myCounts = {};
+      myHand.forEach((card) => {
+        if (card.value !== void 0) {
+          myCounts[card.value] = (myCounts[card.value] || 0) + 1;
+        }
+      });
+      const col1Rows = [
+        { label: "\u5927", count: remaining[17] || 0 },
+        { label: "\u5C0F", count: remaining[16] || 0 },
+        { label: "\u7EA7", count: levelRemaining },
+        { label: "\u4E07", count: wild }
+      ].map(
+        ({ label, count }) => `<div class="tracker-row"><span class="tracker-name">${label}</span><span class="tracker-count${this._countClass(count)}">${count}</span></div>`
+      ).join("");
+      const allRanks = [14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3];
+      const rankLabels = ["A", "K", "Q", "J", "10", "9", "8", "7", "6", "5", "4", "3"];
+      const colDefs = [[0, 4], [4, 8], [8, 12]];
+      const trackerCols = colDefs.map(([start, end]) => {
+        const rows = allRanks.slice(start, end).map((v, i) => {
+          const c = remaining[v] - (myCounts[v] || 0);
+          return `<div class="tracker-row"><span class="tracker-name">${rankLabels[start + i]}</span><span class="tracker-count${this._countClass(c)}">${c}</span></div>`;
+        }).join("");
+        return `<div class="tracker-col">${rows}</div>`;
+      }).join("");
+      el.innerHTML = `<div class="tracker-columns">  <div class="tracker-col">${col1Rows}</div>  ${trackerCols}</div>`;
     }
     _collectSelected() {
       return [...this._selectedIndices].sort((a, b) => a - b).map((i) => this._myHand[i]);
@@ -5606,10 +5699,18 @@
       this._syncSidePlayAreas();
       this._renderCandidates();
       this._updateTableInfo();
+      this._applyLayoutMode(true);
     }
     _closeTableOverlay() {
       this._tableOpen = false;
       this._el.tableOverlay.classList.add("hidden");
+      this._applyLayoutMode(false);
+    }
+    /** 应用横/竖布局模式 */
+    _applyLayoutMode(isVertical) {
+      this._refreshHandLayout();
+      this._toggleStatusRow(isVertical);
+      this._renderCardTracker();
     }
     /** 渲染左栏组牌列表（showMyTurn 的 candidates，支持多选） */
     _renderCandidates() {
@@ -5712,18 +5813,53 @@
     showTributeDialog(options) {
       return new Promise((resolve) => {
         const content = this._el.tributeContent;
+        let recommendedIndex = 0;
         if (options.isResist) {
           const names = (options.resistNames || []).join("\u3001");
           content.innerHTML = `<h3>\u6297\u8D21</h3><p>${names} \u6301\u6709\u53CC\u738B\uFF0C\u672C\u5C40\u514D\u8D21\u3002</p><div class="modal-actions"><button class="btn primary" id="tribute-ok">\u77E5\u9053\u4E86</button></div>`;
         } else {
-          const candHtml = (options.candidates || []).map(
-            (c, i) => this._renderCard(c, i, i === (options.recommendedIndex ?? 0) ? "selected" : "")
+          const candidates = options.candidates || [];
+          if (options.recommendedCard && candidates.length > 0) {
+            const idx = candidates.findIndex(
+              (c) => c.value === options.recommendedCard.value && c.suit === options.recommendedCard.suit
+            );
+            if (idx >= 0) recommendedIndex = idx;
+          }
+          const candHtml = candidates.map(
+            (c, i) => this._renderCard(c, i, i === recommendedIndex ? "selected" : "")
           ).join("");
+          const allHand = options.allHand || [];
+          const cardKey = (c) => `${c.value}|${c.suit}`;
+          const candCount = /* @__PURE__ */ new Map();
+          for (const c of candidates) candCount.set(cardKey(c), (candCount.get(cardKey(c)) || 0) + 1);
+          const usedCount = /* @__PURE__ */ new Map();
+          const otherCards = allHand.filter((card) => {
+            const k = cardKey(card);
+            const total = candCount.get(k) || 0;
+            const taken = usedCount.get(k) || 0;
+            if (taken < total) {
+              usedCount.set(k, taken + 1);
+              return false;
+            }
+            return true;
+          });
+          let otherHtml = "";
+          if (otherCards.length > 0) {
+            otherCards.sort((a, b) => {
+              const la = a.level_value ?? a.value;
+              const lb = b.level_value ?? b.value;
+              if (la !== lb) return la - lb;
+              const sa = a.suit === "JOKER" ? 4 : SUIT_ORDER[a.suit] ?? 4;
+              const sb = b.suit === "JOKER" ? 4 : SUIT_ORDER[b.suit] ?? 4;
+              return sa - sb;
+            });
+            otherHtml = `<div class="other-hand-row"><span class="row-label">\u5176\u4F59\u624B\u724C</span>` + otherCards.map((c) => this._renderCard(c, void 0, "", 0)).join("") + `</div>`;
+          }
           const label = options.type === "return" ? "\u56DE\u8D21" : "\u8FDB\u8D21";
-          content.innerHTML = `<h3>${label}\uFF1A${POS_NAMES2[options.fromPlayer]} \u2192 ${POS_NAMES2[options.toPlayer]}</h3><p>\u8BF7\u9009\u62E9\u4E00\u5F20\u724C${label}\u3002</p><div class="candidate-row">${candHtml}</div><div class="modal-actions"><button class="btn primary" id="tribute-ok">\u786E\u5B9A</button></div>`;
+          content.innerHTML = `<h3>${label}\uFF1A${POS_NAMES2[options.fromPlayer]} \u2192 ${POS_NAMES2[options.toPlayer]}</h3><p>\u8BF7\u9009\u62E9\u4E00\u5F20\u724C${label}\u3002</p><div class="candidate-row"><span class="row-label">\u53EF\u9009\u724C</span>${candHtml}</div>` + otherHtml + `<div class="modal-actions"><button class="btn primary" id="tribute-ok">\u786E\u5B9A</button></div>`;
         }
         this._el.tributeModal.classList.remove("hidden");
-        let selectedIndex = options.isResist ? -1 : options.recommendedIndex ?? 0;
+        let selectedIndex = options.isResist ? -1 : recommendedIndex;
         const row = content.querySelector(".candidate-row");
         if (row) {
           row.querySelectorAll(".card").forEach((el) => {
@@ -5863,7 +5999,8 @@
           toPlayer: to,
           candidates,
           recommendedCard: recommended,
-          isResist: false
+          isResist: false,
+          allHand: hand
         });
         if (selectedCard) {
           const validation = game.validateTributeCard(from, selectedCard);
@@ -5902,7 +6039,8 @@
           toPlayer: from,
           candidates,
           recommendedCard: recommended,
-          isResist: false
+          isResist: false,
+          allHand: hand
         });
         if (selectedCard) {
           const validation = game.validateReturnCard(returnPlayer, selectedCard);

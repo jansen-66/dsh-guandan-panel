@@ -173,6 +173,7 @@ body {
   flex-direction: column;
   min-width: 0;
   gap: 6px;
+  overflow: visible;
 }
 
 #side-bar {
@@ -191,6 +192,7 @@ body {
   flex-wrap: wrap;     /* 空间不足时换行 */
   font-size: 13px;
 }
+#status-row.hidden { display: none; }
 .turn-hint { margin-left: auto; text-align: right; cursor: pointer; user-select: none; }
 
 /* 第一行右侧信息组：快捷键提示 + 版本号（靠右） */
@@ -274,6 +276,7 @@ body {
   display: flex;
   align-items: flex-end;
   min-height: 0;
+  overflow: visible;
 }
 
 #my-hand {
@@ -287,6 +290,26 @@ body {
   min-height: 0;
 }
 
+/* 竖向排列时：溢出游戏栏、与 table-panel 左对齐 */
+#my-hand.vertical-mode {
+  position: relative;
+  z-index: 158;
+  overflow: visible;
+}
+
+/* 牌桌打开且 table-panel > 360 时：每组牌竖向排列 */
+#my-hand .card-group {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  gap: 0;
+}
+#my-hand .card-group.vertical {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+}
+
 #action-bar {
   flex: 0 0 auto;
   display: flex;
@@ -297,6 +320,52 @@ body {
   align-self: stretch;
 }
 
+/* ============ 记牌器（竖排时显示在手牌区左侧，action-bar 右侧） ============ */
+#card-tracker {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  font-size: 11px;
+  user-select: none;
+  z-index: 10;
+  /* 与手牌同一水平，靠底部对齐 */
+  align-self: flex-end;
+}
+#hand-area.vertical-mode #card-tracker {
+  display: flex;
+}
+.tracker-columns {
+  display: flex;
+  flex-direction: row;
+  gap: 4px;
+}
+.tracker-col {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.tracker-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+.tracker-name {
+  font-size: 10px;
+  color: var(--muted);
+}
+.tracker-count {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  min-width: 18px;
+  text-align: center;
+}
+.tracker-count.red { color: var(--red); }
+.tracker-count.yellow { color: var(--highlight); }
+.tracker-count.green { color: var(--accent); }
 /* ============ 扑克牌 ============ */
 .card {
   position: relative;
@@ -401,10 +470,14 @@ body {
 .modal-box h2, .modal-box h3 { margin: 0 0 12px; }
 .modal-box p { color: var(--muted); margin: 6px 0; }
 .modal-actions { margin-top: 16px; display: flex; gap: 10px; justify-content: flex-end; }
-.candidate-row { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0; }
+.candidate-row { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0; align-items: center; }
 .candidate-row .card { cursor: pointer; }
 .candidate-row .card:hover { transform: translateY(-6px); }
 .candidate-row .card.selected { transform: translateY(-10px); border-color: var(--highlight); box-shadow: 0 0 0 2px var(--highlight); }
+.row-label { font-size: 12px; color: var(--muted); white-space: nowrap; align-self: center; margin-right: 4px; }
+.other-hand-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 10px 0; opacity: .55; }
+.other-hand-row .card { cursor: default; }
+.other-hand-row .card:hover { transform: none; }
 .deal-over-body .modal-actions { justify-content: center; }
 
 /* ============ 日志面板 ============ */

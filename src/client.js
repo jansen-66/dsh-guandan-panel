@@ -192,7 +192,8 @@ export default function () {
   font: 13px/1.5 system-ui, sans-serif;
   box-shadow: none; }
 /* 游戏根节点填满面板；作用域化 CSS（.gd-root xxx）即由此元素承接 */
-.hp-bottom .gd-root { height: 100%; width: 100%; min-height: 0; }
+/* 覆盖 scopeCss 将 body { overflow: hidden } 转为 .gd-root { overflow: hidden } 导致的截断问题 */
+.hp-bottom .gd-root { height: 100%; width: 100%; min-height: 0; overflow: visible; }
 /* 本局结束横幅：原为 fixed 全屏（left/right:0），改为相对 .hp-bottom（position:fixed
    即 positioned ancestor）定位，宽度自适应 = 跟随底部面板（中间列），不再盖左侧栏 */
 .hp-bottom .gd-root #deal-over-modal.modal:not(.hidden) {
