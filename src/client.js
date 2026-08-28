@@ -46,6 +46,7 @@ export default function () {
     <button id="btn-pass" class="secondary-btn" disabled>过牌</button>
     <button id="btn-play" class="primary-btn" disabled>出牌</button>
   </div>
+  <div id="card-tracker"></div>
   <div id="game-main">
     <div id="main-center">
       <div id="status-row">

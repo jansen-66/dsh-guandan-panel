@@ -189,8 +189,8 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-  flex-wrap: wrap;     /* 空间不足时换行 */
   font-size: 13px;
+  min-width: 0;
 }
 #status-row.hidden { display: none; }
 .turn-hint { margin-left: auto; text-align: right; cursor: pointer; user-select: none; }
@@ -245,7 +245,7 @@ body {
 }
 .counts {
   display: flex;
-  gap: 14px;
+  gap: 3px;
   align-items: center;
   flex: 0 0 auto;       /* 玩家信息不被压缩，优先完整显示 */
   white-space: nowrap;
@@ -278,6 +278,10 @@ body {
   min-height: 0;
   overflow: visible;
 }
+#hand-area.vertical-mode {
+  justify-content: flex-end;
+  gap: 0;
+}
 
 #my-hand {
   flex: 1 1 auto;
@@ -290,7 +294,7 @@ body {
   min-height: 0;
 }
 
-/* 竖向排列时：溢出游戏栏、与 table-panel 左对齐 */
+/* 竖向排列时：溢出游戏栏、在最上层、与 table-panel 左对齐 */
 #my-hand.vertical-mode {
   position: relative;
   z-index: 158;
@@ -309,6 +313,9 @@ body {
   align-items: flex-start;
   gap: 0;
 }
+#my-hand .card-group.vertical + .card-group.vertical {
+  margin-left: 2px;
+}
 
 #action-bar {
   flex: 0 0 auto;
@@ -320,7 +327,7 @@ body {
   align-self: stretch;
 }
 
-/* ============ 记牌器（竖排时显示在手牌区左侧，action-bar 右侧） ============ */
+/* ============ 记牌器（竖排时显示在 action-bar 右侧，hand-area 左侧） ============ */
 #card-tracker {
   display: none;
   flex-direction: column;
@@ -332,8 +339,12 @@ body {
   z-index: 10;
   /* 与手牌同一水平，靠底部对齐 */
   align-self: flex-end;
+  flex: 0 0 auto;
+  max-width: 120px;
+  min-width: 80px;
+  margin-left: 8px;
 }
-#hand-area.vertical-mode #card-tracker {
+#game-bar:has(#hand-area.vertical-mode) #card-tracker {
   display: flex;
 }
 .tracker-columns {
@@ -390,7 +401,7 @@ body {
 }
 .card-value-tl, .card-value-br {
   position: absolute;
-  font-size: 13px;
+  font-size: var(--card-font, 13px);
   font-weight: 700;
   line-height: 1;
 }
@@ -400,7 +411,7 @@ body {
   position: absolute;
   top: 50%; left: 50%;
   transform: translate(-50%, -50%);
-  font-size: 12px;
+  font-size: var(--card-suit-font, 12px);
   font-weight: 700;
 }
 

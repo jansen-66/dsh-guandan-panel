@@ -5090,7 +5090,7 @@
       html += `<div class="hand-item ${nameClass}">`;
       html += `<span class="hand-name">${POS_NAMES[i]}</span>`;
       if (hand && hand.length > 0) {
-        html += '<span class="hand-cards">';
+        html += '<span class="hand-cards mini-cards">';
         html += hand.map((c) => ui2._renderCardMini(c)).join("");
         html += "</span>";
       } else {
@@ -5147,6 +5147,7 @@
         if (game2.gameState === "idle") {
           const isGameEnd = game2.currentLevel >= MAX_LEVEL || maxDeals !== Infinity && dealsPlayed >= maxDeals;
           ui2.setTurnInfo(isGameEnd ? "\u6E38\u620F\u7ED3\u675F" : "\u7B49\u5F85\u4E0B\u4E00\u526F");
+          game2.dealOverPending = true;
           await new Promise((resolve) => {
             const nextBtn = document.getElementById("btn-next-deal");
             const closeBtn = document.getElementById("btn-close-deal");
@@ -5170,6 +5171,8 @@
                 document.getElementById("deal-over-modal").classList.add("hidden");
               };
             }
+          }).finally(() => {
+            game2.dealOverPending = false;
           });
         }
         if (maxDeals !== Infinity && dealsPlayed >= maxDeals) break;
@@ -5183,7 +5186,7 @@
   }
 
   // guandan/js/ui.js
-  var POS_NAMES2 = ["\u81EA\u5DF1", "\u4E0B\u5BB6", "\u961F\u53CB", "\u4E0A\u5BB6"];
+  var POS_NAMES2 = ["\u6211", "\u4E0B", "\u53CB", "\u4E0A"];
   var SUIT_ORDER = { SPADE: 0, CLUB: 1, DIAMOND: 2, HEART: 3 };
   var CARD_W = 30;
   var CAND_TYPE_NAMES = {
@@ -5204,11 +5207,11 @@
     return SUIT_COLOR[card.suit] || "black";
   }
   function getRankText(card) {
-    if (card.suit === "JOKER") return card.value === 17 ? "\u5927\u738B" : "\u5C0F\u738B";
+    if (card.suit === "JOKER") return card.value === 17 ? "\u5927" : "\u5C0F";
     return VALUE_TO_DISPLAY[card.value] || String(card.value);
   }
   function getSuitText(card) {
-    if (card.suit === "JOKER") return "";
+    if (card.suit === "JOKER") return "\u738B";
     return SUIT_SYMBOL[card.suit] || "";
   }
   var UI = class {
@@ -5450,6 +5453,33 @@
       this._el.myHand.innerHTML = this._renderHand(this._myHand, this._isMyTurn, this._selectedIndices);
       this._el.myHand.classList.toggle("vertical-mode", isVertical);
       this._el.handArea.classList.toggle("vertical-mode", isVertical);
+      this._setVerticalCardSize(isVertical);
+      this._renderCardTracker();
+    }
+    /** 竖排模式下动态设置卡牌尺寸：宽度 = table-panel 宽度 / 16，但不小于默认 30px */
+    _setVerticalCardSize(isVertical) {
+      const handEl = this._el.myHand;
+      if (!handEl) return;
+      if (isVertical) {
+        const panel = this._el.tablePanel;
+        if (panel) {
+          const w = panel.getBoundingClientRect().width;
+          let cardW = w / 16;
+          const minCardW = 30;
+          if (cardW < minCardW) cardW = minCardW;
+          const cardH = cardW * (44 / 30);
+          const fontScale = cardW / 30;
+          handEl.style.setProperty("--card-w", cardW + "px");
+          handEl.style.setProperty("--card-h", cardH + "px");
+          handEl.style.setProperty("--card-font", 13 * fontScale + "px");
+          handEl.style.setProperty("--card-suit-font", 12 * fontScale + "px");
+        }
+      } else {
+        handEl.style.removeProperty("--card-w");
+        handEl.style.removeProperty("--card-h");
+        handEl.style.removeProperty("--card-font");
+        handEl.style.removeProperty("--card-suit-font");
+      }
     }
     /** 隐藏/显示第一行信息 */
     _toggleStatusRow(hide) {
@@ -5608,16 +5638,14 @@
       if (count > 0) return " green";
       return "";
     }
-    // ---------- 记牌器（竖排时显示在手牌区左侧） ----------
+    // ---------- 记牌器（竖排时显示在 action-bar 右侧，hand-area 左侧） ----------
     _renderCardTracker() {
       let el = this._cardTrackerEl;
       if (!el) {
-        el = document.createElement("div");
-        el.id = "card-tracker";
-        const handArea = document.getElementById("hand-area");
-        if (handArea) handArea.prepend(el);
+        el = document.getElementById("card-tracker");
         this._cardTrackerEl = el;
       }
+      if (!el) return;
       const isVertical = this._isVerticalHandLayout();
       const tracker = this._cardTracker;
       if (!tracker || !isVertical) {
@@ -5643,8 +5671,9 @@
       ].map(
         ({ label, count }) => `<div class="tracker-row"><span class="tracker-name">${label}</span><span class="tracker-count${this._countClass(count)}">${count}</span></div>`
       ).join("");
-      const allRanks = [14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3];
-      const rankLabels = ["A", "K", "Q", "J", "10", "9", "8", "7", "6", "5", "4", "3"];
+      const labelOf = { 14: "A", 13: "K", 12: "Q", 11: "J" };
+      const allRanks = [14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2].filter((v) => v !== levelVal);
+      const rankLabels = allRanks.map((v) => labelOf[v] || String(v));
       const colDefs = [[0, 4], [4, 8], [8, 12]];
       const trackerCols = colDefs.map(([start, end]) => {
         const rows = allRanks.slice(start, end).map((v, i) => {
@@ -5728,6 +5757,7 @@
       }).join("");
       list.querySelectorAll(".candidate-group").forEach((el) => {
         el.addEventListener("click", () => this._onCandidateClick(parseInt(el.dataset.cidx, 10)));
+        el.addEventListener("dblclick", () => this._onCandidateDblClick(parseInt(el.dataset.cidx, 10)));
       });
     }
     _onCandidateClick(i) {
@@ -5740,6 +5770,15 @@
         this._selectedCandidates.add(i);
         this._selectCards(cand.cards, true);
       }
+      this._el.myHand.innerHTML = this._renderHand(this._myHand, this._isMyTurn, this._selectedIndices);
+      this._renderCandidates();
+    }
+    _onCandidateDblClick(i) {
+      const cand = this._candidates[i];
+      if (!cand || !cand.cards || cand.cards.length === 0) return;
+      this._clearSelection();
+      this._selectedCandidates.add(i);
+      this._selectCards(cand.cards, true);
       this._el.myHand.innerHTML = this._renderHand(this._myHand, this._isMyTurn, this._selectedIndices);
       this._renderCandidates();
     }
@@ -5931,7 +5970,15 @@
   var eventBus = new EventBus();
   var game = null;
   var players = null;
-  ui.onNewGame = () => startGame(true);
+  ui.onNewGame = () => {
+    eventBus.removeAllListeners("deal_over");
+    const dealOverModal = document.getElementById("deal-over-modal");
+    if (dealOverModal) dealOverModal.classList.add("hidden");
+    const tributeModal = document.getElementById("tribute-modal");
+    if (tributeModal) tributeModal.classList.add("hidden");
+    startGame(true);
+  };
+  startGame(true);
   function subscribeEvents() {
     eventBus.on("deal", (data) => {
       ui.updateGameInfo(`\u7B2C${data.dealNumber}\u526F | \u7EA7\u724C: ${data.level}`);

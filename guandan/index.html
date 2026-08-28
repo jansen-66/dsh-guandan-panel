@@ -13,6 +13,7 @@
       <button id="btn-pass" class="secondary-btn" disabled>过牌</button>
       <button id="btn-play" class="primary-btn" disabled>出牌</button>
     </div>
+    <div id="card-tracker"></div>
     <div id="game-main">
       <div id="main-center">
         <div id="status-row">
@@ -20,7 +21,10 @@
           <div id="counts" class="counts"></div>
           <div id="turn-info" class="info-chip">准备中…</div>
           <div id="game-info" class="info-chip">—</div>
-          <span class="version-tag" title="掼蛋版本">v0.1.X</span>
+          <div class="status-right">
+            <span class="shortcut-hint">空格-出牌 C-过牌 N-取消 V-牌桌</span>
+            <span class="version-tag" title="掼蛋版本">v0.1.X</span>
+          </div>
         </div>
         <div id="hand-area">
           <div id="my-hand"></div>
