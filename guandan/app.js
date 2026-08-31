@@ -1351,11 +1351,6 @@
       for (const cand of candidates) {
         const path = await this._simulateToVictory(cand, myHand, opponentCards, lastPlay);
         if (path) {
-          console.log(`[1V1] ${this._myName} \u6A21\u62DF\u6210\u529F: ${cand.type} ${(cand.cards || []).map((c) => c.display).join("")}`);
-          for (let i = 1; i < path.length; i++) {
-            const step = path[i];
-            console.log(`  ${i}. [${step.who}] ${step.type}: ${step.cards}`);
-          }
           return { action: "play", cards: cand.cards, type: cand.type };
         }
       }
@@ -2265,7 +2260,7 @@
           else if (val === 3) bombList.push(c);
           else nonMaxList.push(c);
         }
-        if (nonMaxList.length > 0) {
+        if (this.position == 10 && nonMaxList.length > 0) {
           const cardsStr = nonMaxList.map((c) => c.cards.map((card) => this._formatCard(card)).join(" ")).join(" | ");
           console.log(`[NONMAX] [${this.position}#] ${cardsStr}`);
         }
@@ -2453,7 +2448,7 @@
       }
       return !hasMediumCards || minPair.main_value < 12;
     }
-    _filterBeatCandidates(candidates, lastPlay, isTeammateTurn, quiet = false) {
+    _filterBeatCandidates(candidates, lastPlay, isTeammateTurn, quiet = true) {
       const lastType = lastPlay.type.toUpperCase();
       const lastMv = lastPlay.main_value || 0;
       const isLastBomb = ["BOMB", "FLUSH_STRAIGHT", "FOUR_JOKERS"].includes(lastType);
@@ -4444,7 +4439,7 @@
         const wildCards = cards.filter((c) => c.value === this.currentLevel && c.suit === "HEART");
         const nonWild = cards.filter((c) => !(c.value === this.currentLevel && c.suit === "HEART"));
         console.error(`[INVALID_PLAY] player=${playerIdx} cards=${cards.map((c) => c.display || c.value).join(",")} wildCount=${wildCards.length} nonWildCount=${nonWild.length} nonWild=${nonWild.map((c) => c.display || c.value).join(",")} wild=${wildCards.map((c) => c.display || c.value).join(",")} n=${cards.length}`);
-        return { success: false, reason: "invalid_hand_type" };
+        return { success: false, reason: `[${cards.map((c) => c.display || c.value).join(",")}]` };
       }
       const isLead = !this.lastPlay;
       if (this.lastPlay) {
@@ -4899,33 +4894,36 @@
         const userAction = await waitUserWithTimeout(ui2, decision, mpConfig);
         let finalSend = null;
         if (userAction.action === "play") {
-          const result = game2.playCards(0, userAction.cards);
+          let playedCards = userAction.cards;
+          let result = game2.playCards(0, playedCards);
           if (!result.success) {
-            ui2.showToast(`\u51FA\u724C\u5931\u8D25: ${result.reason}`);
-            const newDecision = await player.aiPlayer.decide(game2.hands[0], game2.lastPlay);
-            const newCands = player.aiPlayer.strategy._groupsCache?.candidates || [];
-            ui2.showMyTurn(game2.hands[0], game2.lastPlay, newDecision, newCands, game2.cardTracker, game2.playAnalyzer);
-            const retryAction = await waitUserWithTimeout(ui2, newDecision, mpConfig);
-            if (retryAction.action === "play") {
-              const retryResult = game2.playCards(0, retryAction.cards);
-              if (!retryResult.success) {
+            while (!result.success) {
+              ui2.showToast(`\u51FA\u724C\u5931\u8D25: ${result.reason}`);
+              const newDecision = await player.aiPlayer.decide(game2.hands[0], game2.lastPlay);
+              const newCands = player.aiPlayer.strategy._groupsCache?.candidates || [];
+              ui2.showMyTurn(game2.hands[0], game2.lastPlay, newDecision, newCands, game2.cardTracker, game2.playAnalyzer);
+              const retryAction = await waitUserWithTimeout(ui2, newDecision, mpConfig);
+              if (retryAction.action === "play") {
+                playedCards = retryAction.cards;
+                result = game2.playCards(0, playedCards);
+                if (result.success) {
+                  player.aiPlayer.strategy.updateCacheAfterPlay(game2.hands[0], playedCards);
+                  game2.cardTracker.cardsOut(playedCards, 0);
+                  game2.cardTracker.updateKingAfterPlay(
+                    { type: "play", cards: playedCards },
+                    0,
+                    null,
+                    ""
+                  );
+                  ui2.updateHand(game2.hands[0]);
+                  finalSend = { type: "PLAY_ACTION", cards: playedCards, playType: result.type };
+                  break;
+                }
+              } else {
                 game2.passCards(0);
                 finalSend = { type: "PASS_ACTION" };
-              } else {
-                player.aiPlayer.strategy.updateCacheAfterPlay(game2.hands[0], retryAction.cards);
-                game2.cardTracker.cardsOut(retryAction.cards, 0);
-                game2.cardTracker.updateKingAfterPlay(
-                  { type: "play", cards: retryAction.cards },
-                  0,
-                  null,
-                  ""
-                );
-                ui2.updateHand(game2.hands[0]);
-                finalSend = { type: "PLAY_ACTION", cards: retryAction.cards, playType: retryResult.type };
+                break;
               }
-            } else {
-              game2.passCards(0);
-              finalSend = { type: "PASS_ACTION" };
             }
           } else {
             player.aiPlayer.strategy.updateCacheAfterPlay(game2.hands[0], userAction.cards);
@@ -5186,7 +5184,8 @@
   }
 
   // guandan/js/ui.js
-  var POS_NAMES2 = ["\u6211", "\u4E0B", "\u53CB", "\u4E0A"];
+  var POS_NAMES2 = ["\u81EA\u5DF1", "\u4E0B\u5BB6", "\u961F\u53CB", "\u4E0A\u5BB6"];
+  var POS0_NAMES = ["\u6211", "\u4E0B", "\u53CB", "\u4E0A"];
   var SUIT_ORDER = { SPADE: 0, CLUB: 1, DIAMOND: 2, HEART: 3 };
   var CARD_W = 30;
   var CAND_TYPE_NAMES = {
@@ -5353,7 +5352,7 @@
         if (play) {
           cardsHtml = play.isPass ? '<span class="mini-cards lp-cards">\u8FC7</span>' : `<span class="mini-cards lp-cards">${(play.cards || []).map((c) => this._renderCardMini(c)).join("")}</span>`;
         }
-        return `<span class="count-group ${p === 0 ? "self" : ""}"><span class="count-chip">${POS_NAMES2[p]}: ${counts[p]}</span>` + cardsHtml + `</span>`;
+        return `<span class="count-group ${p === 0 ? "self" : ""}"><span class="count-chip">${POS0_NAMES[p]}: ${counts[p]}</span>` + cardsHtml + `</span>`;
       }).join("");
       this._updateTableInfo();
     }
@@ -5456,7 +5455,7 @@
       this._setVerticalCardSize(isVertical);
       this._renderCardTracker();
     }
-    /** 竖排模式下动态设置卡牌尺寸：宽度 = table-panel 宽度 / 16，但不小于默认 30px */
+    /** 竖排模式下动态设置卡牌尺寸：宽度 = table-panel 宽度 / 17，但不小于默认 30px */
     _setVerticalCardSize(isVertical) {
       const handEl = this._el.myHand;
       if (!handEl) return;
@@ -5464,7 +5463,7 @@
         const panel = this._el.tablePanel;
         if (panel) {
           const w = panel.getBoundingClientRect().width;
-          let cardW = w / 16;
+          let cardW = w / 17;
           const minCardW = 30;
           if (cardW < minCardW) cardW = minCardW;
           const cardH = cardW * (44 / 30);
@@ -5978,7 +5977,6 @@
     if (tributeModal) tributeModal.classList.add("hidden");
     startGame(true);
   };
-  startGame(true);
   function subscribeEvents() {
     eventBus.on("deal", (data) => {
       ui.updateGameInfo(`\u7B2C${data.dealNumber}\u526F | \u7EA7\u724C: ${data.level}`);

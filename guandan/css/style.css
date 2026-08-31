@@ -32,6 +32,7 @@
   --panel-border: #dce6e2;
   --panel-hover: #f2faf7;
   --highlight: #d99a1f;
+  --selected-overlay: color-mix(in srgb, var(--highlight) 18%, transparent);
   /* 顶部浏览器栏（独立版） */
   --toolbar-bg: #ffffff;
   --toolbar-border: #dde7e3;
@@ -69,6 +70,7 @@
   --panel-border: #3a465e;
   --panel-hover: #2c364e;
   --highlight: #e6b34d;
+  --selected-overlay: transparent;
   /* 顶部浏览器栏（独立版） */
   --toolbar-bg: #161b27;
   --toolbar-border: #2a3140;
@@ -311,10 +313,8 @@ body {
 #my-hand .card-group.vertical {
   flex-direction: column;
   align-items: flex-start;
+  margin-left: calc(var(--card-w, 30px) * 0.167);
   gap: 0;
-}
-#my-hand .card-group.vertical + .card-group.vertical {
-  margin-left: 2px;
 }
 
 #action-bar {
@@ -347,6 +347,49 @@ body {
 #game-bar:has(#hand-area.vertical-mode) #card-tracker {
   display: flex;
 }
+/* 竖排显示时：游戏栏背景改为牌桌同款深绿桌面 */
+#game-bar:has(#hand-area.vertical-mode) {
+  background: linear-gradient(90deg, #0a2c1a, #134a2c);
+  border-top: 2px solid rgba(45, 106, 67, .98);
+  box-shadow: 0 -2px 12px rgba(0, 0, 0, .35);
+}
+#game-bar:has(#hand-area.vertical-mode) .info-chip {
+  background: rgba(0, 0, 0, .25);
+  color: #e8ecf4;
+}
+#game-bar:has(#hand-area.vertical-mode) .count-chip {
+  background: rgba(0, 0, 0, .2);
+  color: #cbd5e1;
+}
+#game-bar:has(#hand-area.vertical-mode) .count-group.self .count-chip {
+  color: #4dd0a8;
+  border-color: #4dd0a8;
+}
+#game-bar:has(#hand-area.vertical-mode) .shortcut-hint,
+#game-bar:has(#hand-area.vertical-mode) .version-tag {
+  color: #cbd5e1;
+  opacity: .6;
+}
+#game-bar:has(#hand-area.vertical-mode) .ghost-btn {
+  background: rgba(0, 0, 0, .3);
+  color: #e8ecf4;
+  border: 1px solid rgba(255, 255, 255, .2);
+}
+#game-bar:has(#hand-area.vertical-mode) .ghost-btn:hover {
+  background: rgba(0, 0, 0, .5);
+}
+#game-bar:has(#hand-area.vertical-mode) .primary-btn {
+  background: #4dd0a8;
+  color: #1a5c38;
+}
+#game-bar:has(#hand-area.vertical-mode) .primary-btn:hover {
+  background: #3bc496;
+}
+#game-bar:has(#hand-area.vertical-mode) .secondary-btn {
+  background: rgba(0, 0, 0, .3);
+  color: #e8ecf4;
+  border: 1px solid rgba(255, 255, 255, .2);
+}
 .tracker-columns {
   display: flex;
   flex-direction: row;
@@ -362,15 +405,16 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 4px;
+  height: 18px;
 }
 .tracker-name {
-  font-size: 10px;
-  color: var(--muted);
+  font-size: 11px;
+  color: #cbd5e1;
 }
 .tracker-count {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
-  color: var(--text);
+  color: #e8ecf4;
   min-width: 18px;
   text-align: center;
 }
@@ -392,12 +436,25 @@ body {
 }
 .card.clickable { cursor: pointer; }
 .card.clickable:hover { transform: translateY(-8px); }
-.card.selected { transform: translateY(-16px); box-shadow: 0 4px 12px color-mix(in srgb, var(--highlight) 40%, transparent); border-color: var(--highlight); }
+.card.selected {
+  transform: translateY(-16px);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--highlight) 40%, transparent), 0 0 0 1px color-mix(in srgb, var(--highlight) 50%, transparent);
+  border: 1px solid var(--highlight);
+}
+/* 浅色模式：选中牌叠加遮罩 */
+.card.selected::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 6px;
+  background: var(--selected-overlay);
+  pointer-events: none;
+  z-index: 5;
+}
 .card.red { color: var(--red); }
 .card.black { color: var(--black); }
 .card.wild {
-  background: linear-gradient(135deg, #fffdf2, #ffe9a8);
-  border-color: #f0c04e;
+  color: #c2185f;
 }
 .card-value-tl, .card-value-br {
   position: absolute;
@@ -590,7 +647,7 @@ body {
   transition: background .15s, border-color .15s, box-shadow .15s;
 }
 .candidate-group:hover { background: rgba(0, 0, 0, .5); border-color: rgba(255, 255, 255, .4); }
-.candidate-group.selected { border-color: var(--highlight); box-shadow: 0 0 0 1px var(--highlight); }
+.candidate-group.selected { border-color: var(--highlight); box-shadow: inset 0 0 0 1px var(--highlight); }
 .candidate-type {
   flex: 0 0 auto;
   font-size: 12px;
