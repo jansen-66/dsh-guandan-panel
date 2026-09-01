@@ -38,6 +38,25 @@
   --toolbar-border: #dde7e3;
 }
 
+/* ============ 隐藏滚动条：所有可能自动滚动的容器 ============ */
+#my-hand,
+#replay-hand-cards,
+#candidate-list,
+.table-overlay.replay-mode #candidate-list,
+.modal-box,
+.log-content {
+  scrollbar-width: none;            /* Firefox */
+  -ms-overflow-style: none;         /* 旧 Edge */
+}
+#my-hand::-webkit-scrollbar,
+#replay-hand-cards::-webkit-scrollbar,
+#candidate-list::-webkit-scrollbar,
+.table-overlay.replay-mode #candidate-list::-webkit-scrollbar,
+.modal-box::-webkit-scrollbar,
+.log-content::-webkit-scrollbar {
+  display: none;                    /* WebKit/Blink */
+}
+
 /* ============ 主题变量：深色 ============ */
 :root[data-theme="dark"] {
   --bg: #141a26;
@@ -144,6 +163,47 @@ body {
   background: #fff;
   min-height: 0;
 }
+
+/* ============ 游戏栏上方区块（复盘且牌桌未打开时显示四家手牌） ============
+   与游戏栏同为文档流块：出现时占据布局空间，把上方内容顶上去（而非浮窗遮挡） */
+#hands-strip {
+  flex: 0 0 auto;
+  margin-top: auto;      /* 与游戏栏一起贴底，剩余空间留在上方 */
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  background: var(--bar-bg);
+  border-top: 1px solid var(--bar-border);
+  font-size: 12px;
+  color: var(--text);
+  max-height: 45vh;
+  overflow: auto;
+}
+#hands-strip.hidden { display: none; }
+/* 手牌区显示时由它承担贴底（去掉游戏栏的 auto 上边距，避免两者之间被均分出空隙） */
+#hands-strip:not(.hidden) ~ #game-bar { margin-top: 0; }
+.hand-strip-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.hand-strip-label {
+  flex: 0 0 auto;
+  min-width: 40px;
+  font-weight: 700;
+  color: var(--accent-2);
+}
+.hand-strip-cards {
+  flex: 1 1 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px;
+  min-width: 0;
+}
+.hand-strip-cards .card-mini { margin-right: -4px; }  /* 紧凑 */
+.hand-strip-cards .card-mini:last-child { margin-right: 0; }
 
 /* ============ 底部游戏栏 ============ */
 #game-bar {
@@ -346,6 +406,10 @@ body {
 }
 #game-bar:has(#hand-area.vertical-mode) #card-tracker {
   display: flex;
+}
+/* 复盘时记牌无用，强制隐藏 */
+#game-bar:has(#hand-area.replay-hand-area) #card-tracker {
+  display: none;
 }
 /* 竖排显示时：游戏栏背景改为牌桌同款深绿桌面 */
 #game-bar:has(#hand-area.vertical-mode) {
@@ -597,7 +661,8 @@ body {
 #candidate-panel {
   flex: 0 0 186px;
   align-self: flex-end;          /* 面板靠底部排列 */
-  max-height: 100%;
+  /* 显式限制高度（absolute 展开时父高度不明确，100% 会失效），保证组牌列表可滚动 */
+  max-height: calc(100dvh - 96px - 24px);
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -658,6 +723,7 @@ body {
 
 /* 右栏：牌桌（保证正方形，边长取可用宽/高较小者） */
 #table-panel {
+  position: relative;              /* 四角手牌绝对定位的参照 */
   flex: 0 1 auto;                  /* 不随剩余空间增长 */
   min-width: 0;
   align-self: flex-end;            /* 靠底部对齐 */
@@ -777,6 +843,85 @@ body {
   padding: 8px 14px;
 }
 
+/* 大牌桌（>500 四边显示手牌）时：玩家区/出牌区向中心收缩，
+   边缘让给贴边手牌，避免重叠 */
+#table-panel:has(.table-corner) {
+  padding: 46px 36px 46px 36px;
+}
+
+/* 四角手牌（仅大牌桌 >500 时显示，JS 注入 .table-corner） */
+#table-corners {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+.table-corner {
+  position: absolute;
+  overflow: hidden;
+  display: flex;
+  background: rgba(0, 0, 0, .4);
+  border: 1px solid rgba(255, 255, 255, .2);
+  border-radius: 10px;
+  padding: 4px 6px;
+  font-size: 12px;
+  color: #fef3c7;
+}
+/* 队友（上边）/ 自己（下边）：仅一行，宽度铺满桌面边长 */
+.table-corner.corner-tr { top: 2px; left: 2px; right: 2px; }
+.table-corner.corner-bl { bottom: 2px; left: 2px; right: 2px; }
+/* 上家（左边）/ 下家（右边）：仅一列，长度铺满桌面边长 */
+.table-corner.corner-tl { left: 2px; top: 2px; bottom: 2px; }
+.table-corner.corner-br { right: 2px; top: 2px; bottom: 2px; }
+/* 牌流方向：队友/自己 横向一行，上家/下家 纵向一列，均不换行、超出截断 */
+.table-corner.corner-tr,
+.table-corner.corner-bl {
+  justify-content: center;   /* 让牌流在铺满的边上居中 */
+}
+.table-corner.corner-tr .corner-cards,
+.table-corner.corner-bl .corner-cards {
+  flex-direction: row;
+  flex-wrap: nowrap;
+  justify-content: center;
+  flex: 0 1 auto;
+  max-width: 100%;
+}
+.table-corner.corner-tl .corner-cards,
+.table-corner.corner-br .corner-cards {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  justify-content: center;
+  align-content: flex-start;
+}
+.table-corner .corner-cards {
+  display: flex;
+  gap: 1px;
+  overflow: hidden;
+  line-height: 1.2;
+  align-content: flex-start;
+}
+/* 横向（队友/自己）：紧凑重叠 -7px */
+.table-corner.corner-tr .corner-cards .card-mini,
+.table-corner.corner-bl .corner-cards .card-mini {
+  margin-right: -7px;
+}
+.table-corner.corner-tr .corner-cards .card-mini:last-child,
+.table-corner.corner-bl .corner-cards .card-mini:last-child { margin-right: 0; }
+/* 纵向（上家/下家）：牌横放 = 横向牌旋转 90°，竖直叠放。
+   旋转后视觉高 22px、布局占位高 30px；-15px 使净占位 16px，
+   与横向（-7px）一致地露出 16px、相互重叠 6px。 */
+.table-corner.corner-tl .corner-cards .card-mini,
+.table-corner.corner-br .corner-cards .card-mini {
+  margin: 0 0 -15px 0;
+  transform: rotate(90deg);
+}
+.table-corner.corner-tl .corner-cards .card-mini:last-child,
+.table-corner.corner-br .corner-cards .card-mini:last-child { margin-bottom: 0; }
+/* 上家（左边）/ 下家（右边）：牌方向一致，底部朝左 */
+.table-corner.corner-tl .corner-cards .card-mini { transform: rotate(90deg); }
+.table-corner.corner-br .corner-cards .card-mini { transform: rotate(90deg); }
+.table-corner .corner-empty { opacity: .6; font-size: 11px; }
+
 /* 各家最后出牌 */
 .last-play-area {
   display: flex;
@@ -784,15 +929,27 @@ body {
   justify-content: center;
   flex-wrap: wrap;      /* 牌多时换行显示 */
   min-height: 30px;
+  min-width: 56px;      /* 空出牌区也保留可见宽度（左右侧区域最窄 90px） */
   padding: 2px;
   max-width: 100%;
 }
 .last-play-area:empty { min-height: 0; }
-/* 自己和队友的出牌区：最小高度 60，牌多时自动增高 */
+/* 自己和队友的出牌区：最小高度 60，牌多时自动增高；横向排布，最小宽度放宽 */
 #my-area .last-play-area,
 #pos-teammate .last-play-area {
   min-height: 60px;
+  min-width: 60px;
 }
+/* 当前出牌方的出牌区跟随高亮（与游戏栏第一行 .count-group.self 一致） */
+.last-play-area.turn-active {
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.last-play-area.turn-active:empty { min-height: 30px; }
+#my-area .last-play-area.turn-active:empty,
+#pos-teammate .last-play-area.turn-active:empty { min-height: 60px; }
+.last-play-area.turn-active .table-pass { color: var(--accent-2); }
 .last-play-area .table-pass {
   color: #cbd5e1;
   font-size: 13px;
@@ -837,37 +994,55 @@ body {
   border: none;
   padding: 0;
   min-width: 0;
-  max-width: none;
+  max-width: 100%;
   max-height: none;
   overflow: visible;
   width: 100%;
   display: grid;
-  grid-template-columns: auto auto;
+  /* 第 3 行：级牌信息可收缩（内容超宽时横向滚动），按钮列固定不压缩 */
+  grid-template-columns: minmax(0, 1fr) auto;
   justify-content: center;
   align-items: center;
   row-gap: 3px;
   column-gap: 16px;
 }
+/* 三行内容均不换行：宽度不够时各行内横向滚动（滚动条隐藏，滚轮/触控板可横滚） */
+#deal-over-modal .deal-over-rank,
+#deal-over-modal .deal-over-hands,
+#deal-over-modal .deal-over-meta {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* width:max-content + margin 居中：内容短时居中，溢出时从左开始、可完整滚动查看 */
+  width: max-content;
+  max-width: 100%;
+  margin: 0 auto;
+  justify-content: flex-start;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+#deal-over-modal .deal-over-rank::-webkit-scrollbar,
+#deal-over-modal .deal-over-hands::-webkit-scrollbar,
+#deal-over-modal .deal-over-meta::-webkit-scrollbar { display: none; }
 #deal-over-modal .deal-over-rank,
 #deal-over-modal .deal-over-hands {
   grid-column: 1 / -1;
-  justify-content: center;
 }
 #deal-over-modal .deal-over-meta {
   grid-column: 1;
-  justify-content: center;
+  min-width: 0;
 }
 #deal-over-modal .modal-actions {
   grid-column: 2;
   margin-left: 0;
   justify-content: flex-start;
 }
-/* 名次横排 */
+/* 名次横排（单行，超宽由容器横向滚动） */
 #deal-over-modal .deal-over-rank {
   display: flex;
   gap: 8px;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 #deal-over-modal .rank-item {
   display: flex;
@@ -879,12 +1054,12 @@ body {
 #deal-over-modal .rank-medal { font-size: 14px; }
 #deal-over-modal .rank-name { font-weight: 700; }
 #deal-over-modal .rank-team { color: var(--muted); font-size: 11px; }
-/* 剩余手牌：横排紧凑显示 */
+/* 剩余手牌：横排紧凑显示（单行，超宽横向滚动） */
 #deal-over-modal .deal-over-hands {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 #deal-over-modal .deal-over-hands h4 { display: none; }
 #deal-over-modal .hand-item {
@@ -896,12 +1071,12 @@ body {
 }
 #deal-over-modal .hand-name { color: var(--muted); }
 #deal-over-modal .hand-empty { color: var(--accent-2); font-weight: 700; }
-/* 级牌信息横排 */
+/* 级牌信息横排（单行，超宽横向滚动） */
 #deal-over-modal .deal-over-meta {
   display: flex;
   gap: 12px;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 #deal-over-modal .meta-row {
   display: flex;
@@ -929,3 +1104,91 @@ body {
   color: var(--text);
   background: var(--btn-bg);
 }
+#deal-over-modal #btn-replay { background: var(--accent-2); color: #fff; font-weight: 600; }
+
+/* ============ 复盘 / 试打 ============ */
+/* 手牌区内的回放控件 */
+#hand-area .replay-controls {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 4px;
+  min-height: 0;
+}
+#hand-area .replay-controls.hidden { display: none; }
+#hand-area .replay-controls button {
+  min-width: 52px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+#hand-area .replay-controls button:disabled { opacity: .5; cursor: not-allowed; }
+#hand-area .rp-step {
+  align-self: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-2);
+  white-space: nowrap;
+}
+
+/* 复盘模式：左栏显示所有步骤（复用组牌列表样式），牌桌座位保留并随回放步同步出牌信息 */
+.table-overlay.replay-mode #candidate-panel {
+  display: flex;
+  /* 步骤多时限制面板高度，让列表在框内滚动，不超出屏幕 */
+  max-height: calc(100dvh - 96px - 24px);
+}
+.table-overlay.replay-mode #candidate-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;   /* 明确纵向滚动 */
+  min-height: 0;
+}
+
+/* 单家手牌（游戏栏内、回放按钮上方；点击手牌切换显示玩家） */
+#hand-area.replay-hand-area {
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 2px;
+}
+#hand-area.replay-hand-area .replay-controls {
+  flex: 0 0 auto;
+  align-items: center;
+}
+#replay-hand {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  cursor: pointer;
+  user-select: none;
+}
+#replay-hand.hidden { display: none; }
+.replay-hand-label {
+  flex: 0 0 auto;
+  padding: 2px 9px;
+  border-radius: 10px;
+  background: var(--chip-bg);
+  color: var(--accent-2);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+#replay-hand-cards {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+#replay-hand-cards .replay-empty {
+  color: var(--accent-2, #4dd0a8);
+  font-weight: 700;
+  font-size: 12px;
+}
+#replay-hand:hover .replay-hand-label { background: var(--btn-bg-strong); }

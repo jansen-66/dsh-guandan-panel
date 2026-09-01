@@ -7,6 +7,9 @@
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body style="background:#000;">
+  <!-- 游戏栏上方区块（非浮窗）：复盘且牌桌未打开时显示四家手牌（每家一行） -->
+  <div id="hands-strip" class="hidden"></div>
+
   <!-- 底部：常驻游戏栏（独占整页） -->
   <div id="game-bar">
     <div id="action-bar">
@@ -23,11 +26,22 @@
           <div id="game-info" class="info-chip">—</div>
           <div class="status-right">
             <span class="shortcut-hint">空格-出牌 C-过牌 N-取消 V-牌桌</span>
-            <span class="version-tag" title="掼蛋版本">v0.1.X</span>
+            <span class="version-tag" title="掼蛋版本">v0.1.9</span>
           </div>
         </div>
         <div id="hand-area">
           <div id="my-hand"></div>
+          <div id="replay-hand" class="replay-hand hidden">
+            <span id="replay-hand-label" class="replay-hand-label">自己</span>
+            <span id="replay-hand-cards" class="replay-hand-cards"></span>
+          </div>
+          <div id="replay-controls" class="replay-controls hidden">
+            <button id="rp-first" class="ghost-btn" disabled>首步</button>
+            <button id="rp-prev" class="ghost-btn" disabled>上步</button>
+            <span id="rp-step" class="rp-step">0/0</span>
+            <button id="rp-next" class="ghost-btn">下步</button>
+            <button id="rp-last" class="ghost-btn">末步</button>
+          </div>
         </div>
       </div>
       <div id="side-bar">
@@ -110,6 +124,9 @@
           </div>
           <div id="my-last-play" class="last-play-area"></div>
         </div>
+
+        <!-- 四角手牌（大牌桌时显示各家所有手牌） -->
+        <div id="table-corners"></div>
       </main>
     </div>
   </div>
@@ -127,8 +144,11 @@
       var btn = null
       if (e.code === 'Space' || e.key === ' ') {
         var tributeModal = document.getElementById('tribute-modal')
+        var replayControls = document.getElementById('replay-controls')
         if (tributeModal && !tributeModal.classList.contains('hidden')) {
           btn = document.getElementById('tribute-ok')
+        } else if (replayControls && !replayControls.classList.contains('hidden')) {
+          btn = document.getElementById('rp-next')
         } else {
           btn = document.getElementById('table-turn-info')
         }

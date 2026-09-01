@@ -41,6 +41,8 @@ export default function () {
 
       // 游戏面板静态 HTML（对应 guandan/index.html 的 body 内容）
       const GUANDAN_HTML = `
+<!-- 游戏栏上方区块（非浮窗）：复盘且牌桌未打开时显示四家手牌（每家一行） -->
+<div id="hands-strip" class="hidden"></div>
 <div id="game-bar">
   <div id="action-bar">
     <button id="btn-pass" class="secondary-btn" disabled>过牌</button>
@@ -60,6 +62,17 @@ export default function () {
       </div>
       <div id="hand-area">
         <div id="my-hand"></div>
+        <div id="replay-hand" class="replay-hand hidden">
+          <span id="replay-hand-label" class="replay-hand-label">自己</span>
+          <span id="replay-hand-cards" class="replay-hand-cards"></span>
+        </div>
+        <div id="replay-controls" class="replay-controls hidden">
+          <button id="rp-first" class="ghost-btn" disabled>首步</button>
+          <button id="rp-prev" class="ghost-btn" disabled>上步</button>
+          <span id="rp-step" class="rp-step">0/0</span>
+          <button id="rp-next" class="ghost-btn">下步</button>
+          <button id="rp-last" class="ghost-btn">末步</button>
+        </div>
       </div>
     </div>
     <div id="side-bar">
@@ -127,6 +140,9 @@ export default function () {
         </div>
         <div id="my-last-play" class="last-play-area"></div>
       </div>
+
+      <!-- 四角手牌（大牌桌时显示各家所有手牌） -->
+      <div id="table-corners"></div>
     </main>
   </div>
 </div>
@@ -162,9 +178,11 @@ export default function () {
       // 把面板几何应用到布局：底部面板推 centerCol 的 margin-bottom。
       // 面板自身的 left/right 由 GameBar 组件在渲染完成后自行同步（见组件内 effect），
       // 因为本函数是 store 同步订阅者，执行时机早于 React 渲染，此时面板 DOM 尚未挂载。
+      // 面板实测高度（游戏栏 96px + 复盘四家手牌区块），随内容变化由 GameBar 同步
+      let panelHeight = PANEL_HEIGHT
       const applyPush = (s) => {
         const center = findCenterCol()
-        if (center) center.style.marginBottom = s.gameOpen ? PANEL_HEIGHT + 'px' : '0px'
+        if (center) center.style.marginBottom = s.gameOpen ? panelHeight + 'px' : '0px'
       }
       store.subscribe(applyPush)
       applyPush(store.get())
@@ -184,8 +202,10 @@ export default function () {
       injectCss(`
 /* 固定底部面板：盖在中间列让出的底部空白上，视觉即「向上推工作区」。
    left/right 由组件内 effect 内联写入（跟随 centerCol，不盖左侧栏），此处仅兜底。 */
+/* 高度自适应：基础一层游戏栏（96px），复盘显示四家手牌时随 #hands-strip 一起长高，
+   并把中间列同步向上顶（margin-bottom 由组件按实测高度写入） */
 .hp-bottom { position: fixed; left: 0; right: 0; bottom: 0; z-index: 49;
-  height: ${PANEL_HEIGHT}px; box-sizing: border-box;
+  height: auto; min-height: ${PANEL_HEIGHT}px; max-height: 55dvh; box-sizing: border-box;
   display: flex; flex-direction: column;
   background: var(--dsw-specific-sidebar-fill, var(--dsw-alias-bg-overlay, #fff));
   border-top: 1px solid var(--dsw-alias-border-l2, rgba(0,0,0,.2));
@@ -194,7 +214,7 @@ export default function () {
   box-shadow: none; }
 /* 游戏根节点填满面板；作用域化 CSS（.gd-root xxx）即由此元素承接 */
 /* 覆盖 scopeCss 将 body { overflow: hidden } 转为 .gd-root { overflow: hidden } 导致的截断问题 */
-.hp-bottom .gd-root { height: 100%; width: 100%; min-height: 0; overflow: visible; }
+.hp-bottom .gd-root { flex: 1 1 auto; height: auto; min-height: ${PANEL_HEIGHT}px; width: 100%; overflow: visible; }
 /* 本局结束横幅：原为 fixed 全屏（left/right:0），改为相对 .hp-bottom（position:fixed
    即 positioned ancestor）定位，宽度自适应 = 跟随底部面板（中间列），不再盖左侧栏 */
 .hp-bottom .gd-root #deal-over-modal.modal:not(.hidden) {
@@ -212,6 +232,21 @@ export default function () {
   bottom: 96px;
   max-height: calc(100dvh - 96px - 12px);
   overflow: hidden;
+}
+/* 复盘左栏步骤列表：absolute 向上展开时父高度不明确，max-height:100% 失效，
+   给显式最大高度限制，让 #candidate-list 在框内滚动、不超出屏幕 */
+.hp-bottom .gd-root .table-overlay.replay-mode #candidate-panel {
+  max-height: calc(100dvh - 96px - 24px);
+}
+/* 四家手牌：与游戏栏同为流式块（占面板内空间、把上方内容顶上去），
+   只限制最大高度，超出则在块内滚动 */
+.hp-bottom .gd-root #hands-strip {
+  position: static;
+  left: auto;
+  right: auto;
+  bottom: auto;
+  max-height: calc(55dvh - ${PANEL_HEIGHT}px);
+  overflow: auto;
 }
 /* 侧栏底部按钮 */
 .hp-sidebar-toggle { display: flex; align-items: center; gap: 6px; background: none; border: none;
@@ -303,10 +338,13 @@ export default function () {
             if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
             let btn = null
             if (e.code === 'Space' || e.key === ' ') {
-              // 贡牌弹窗显示时，空格键确认贡牌
+              // 贡牌弹窗显示时，空格键确认贡牌；复盘时空格键执行"下步"
               const tributeModal = document.getElementById('tribute-modal')
+              const replayControls = document.getElementById('replay-controls')
               if (tributeModal && !tributeModal.classList.contains('hidden')) {
                 btn = document.getElementById('tribute-ok')
+              } else if (replayControls && !replayControls.classList.contains('hidden')) {
+                btn = document.getElementById('rp-next')
               } else {
                 btn = document.getElementById('table-turn-info')
               }
@@ -352,6 +390,25 @@ export default function () {
           if (center) ro.observe(center)
           window.addEventListener('resize', sync)
           return () => { ro.disconnect(); window.removeEventListener('resize', sync) }
+        }, [open])
+
+        // 面板高度自适应：复盘显示四家手牌时面板会变高，
+        // 这里把实测高度同步给中间列的 margin-bottom，让工作区同步向上让位。
+        React.useEffect(() => {
+          const el = panelRef.current
+          if (!el) return
+          const syncHeight = () => {
+            if (!open) return
+            const h = Math.round(el.getBoundingClientRect().height)
+            if (h > 0 && h !== panelHeight) {
+              panelHeight = h
+              applyPush(store.get())
+            }
+          }
+          syncHeight()
+          const ro = new ResizeObserver(syncHeight)
+          ro.observe(el)
+          return () => ro.disconnect()
         }, [open])
 
         // 关闭时仅隐藏（display:none），DOM 与游戏状态常驻

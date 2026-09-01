@@ -54,6 +54,9 @@
   };
 
   // guandan/src/game-engine/card.js
+  var RANK_LEVEL = 15;
+  var RANK_SMALL_JOKER = 16;
+  var RANK_BIG_JOKER = 17;
   var VALUE_TO_DISPLAY = {
     3: "3",
     4: "4",
@@ -71,7 +74,11 @@
     16: "\u5C0F\u738B",
     17: "\u5927\u738B"
   };
+  var SUIT_CLUB = "CLUB";
   var SUIT_HEART = "HEART";
+  var SUIT_DIAMOND = "DIAMOND";
+  var SUIT_SPADE = "SPADE";
+  var SUIT_JOKER = "JOKER";
   var SUIT_SYMBOL = {
     "CLUB": "\u2663",
     "HEART": "\u2665",
@@ -95,14 +102,33 @@
   var THREE_PAIRS_OFFSET = 2;
   var TWO_TRIPLES_OFFSET_THRESHOLD = 10;
   var TWO_TRIPLES_OFFSET = 1;
-  var POS_NAMES = {
-    0: "\u6211",
-    1: "\u4E0B\u5BB6",
-    2: "\u961F\u53CB",
-    3: "\u4E0A\u5BB6"
-  };
+  var POS_NAMES = ["\u81EA\u5DF1", "\u4E0B\u5BB6", "\u961F\u53CB", "\u4E0A\u5BB6"];
   function isWildCard(card) {
     return card.suit === SUIT_HEART && card.level_value === 15;
+  }
+  function createCard(value, suit) {
+    const card = {
+      value,
+      suit,
+      display: formatDisplay(value, suit)
+    };
+    if (suit === SUIT_JOKER) {
+      if (value === RANK_BIG_JOKER) {
+        card.rank = "BIG_JOKER";
+      } else {
+        card.rank = "SMALL_JOKER";
+      }
+    }
+    card.level_value = value;
+    return card;
+  }
+  function formatDisplay(value, suit) {
+    if (suit === SUIT_JOKER) {
+      if (value === RANK_BIG_JOKER) return "\u5927\u738B";
+      return "\u5C0F\u738B";
+    }
+    if (value === RANK_LEVEL) return "\u7EA7";
+    return VALUE_TO_DISPLAY[value] || String(value);
   }
   function sortCards(cards) {
     return [...cards].sort((a, b) => {
@@ -120,6 +146,21 @@
   }
   function getLevelValue(card) {
     return card.level_value ?? card.value;
+  }
+  function getCardColorClass(card) {
+    if (card.suit === SUIT_JOKER) return card.value === RANK_BIG_JOKER ? "red" : "black";
+    return SUIT_COLOR[card.suit] || "black";
+  }
+  function getSuitSymbol(card) {
+    if (card.suit === SUIT_JOKER) return "\u738B";
+    return SUIT_SYMBOL[card.suit] || "";
+  }
+  function getRankDisplay(card) {
+    if (card.suit === SUIT_JOKER) {
+      return card.value === RANK_BIG_JOKER ? "\u5927" : "\u5C0F";
+    }
+    if (card.value === RANK_LEVEL) return "\u7EA7";
+    return VALUE_TO_DISPLAY[card.value] || String(card.value);
   }
   function cloneHand(hand) {
     return hand.map((c) => ({ ...c }));
@@ -1259,6 +1300,7 @@
           }
         }
       }
+      if (!this.p._quiet) console.log(`[1V1] ${this._myName} \u63A8\u7B97: ${JSON.stringify(Object.fromEntries(countMap))}`);
       return { countMap, cards };
     }
     // ===== 对手压牌模拟 =====
@@ -1351,6 +1393,13 @@
       for (const cand of candidates) {
         const path = await this._simulateToVictory(cand, myHand, opponentCards, lastPlay);
         if (path) {
+          if (!this.p._quiet) {
+            console.log(`[1V1] ${this._myName} \u6A21\u62DF\u6210\u529F: ${cand.type} ${(cand.cards || []).map((c) => c.display).join("")}`);
+            for (let i = 1; i < path.length; i++) {
+              const step = path[i];
+              console.log(`  ${i}. [${step.who}] ${step.type}: ${step.cards}`);
+            }
+          }
           return { action: "play", cards: cand.cards, type: cand.type };
         }
       }
@@ -4050,6 +4099,22 @@
   applyTo(PlayAnalyzer);
 
   // guandan/src/game-engine/game.js
+  function nextAlivePlayer(game2, fromIdx) {
+    let idx = fromIdx;
+    let count = 0;
+    while (count < 4) {
+      idx = (idx + 1) % 4;
+      if (game2.lastPlay && game2.lastPlay.player === idx) {
+        game2.lastPlay = null;
+        if (game2.playerCounts[idx] === 0) {
+          idx = (idx + 2) % 4;
+        }
+      }
+      if (game2.playerCounts[idx] > 0) return idx;
+      count++;
+    }
+    return idx;
+  }
   var Game = class {
     constructor(options = {}) {
       this.level = options.level || 8;
@@ -4094,22 +4159,18 @@
     }
     createDeck() {
       const deck = [];
-      const suits = ["SPADE", "HEART", "CLUB", "DIAMOND"];
-      const SUIT_SYMBOL2 = { CLUB: "\u2663", HEART: "\u2665", DIAMOND: "\u2666", SPADE: "\u2660", JOKER: "" };
-      const VALUE_DISPLAY = { 2: "2", 3: "3", 4: "4", 5: "5", 6: "6", 7: "7", 8: "8", 9: "9", 10: "10", 11: "J", 12: "Q", 13: "K", 14: "A", 15: "\u7EA7", 16: "\u5C0F\u738B", 17: "\u5927\u738B" };
+      const suits = [SUIT_SPADE, SUIT_HEART, SUIT_CLUB, SUIT_DIAMOND];
       for (let d = 0; d < 2; d++) {
         for (const suit of suits) {
           for (let value = 2; value <= 14; value++) {
-            deck.push({
-              value,
-              suit,
-              level_value: value === this.currentLevel ? 15 : value,
-              display: `${SUIT_SYMBOL2[suit]}${VALUE_DISPLAY[value]}`
-            });
+            const card = createCard(value, suit);
+            card.display = `${SUIT_SYMBOL[suit]}${VALUE_TO_DISPLAY[value] ?? value}`;
+            if (value === this.currentLevel) card.level_value = 15;
+            deck.push(card);
           }
         }
-        deck.push({ value: 16, suit: "JOKER", level_value: 16, display: "\u5C0F\u738B", rank: "SMALL_JOKER" });
-        deck.push({ value: 17, suit: "JOKER", level_value: 17, display: "\u5927\u738B", rank: "BIG_JOKER" });
+        deck.push(createCard(RANK_SMALL_JOKER, SUIT_JOKER));
+        deck.push(createCard(RANK_BIG_JOKER, SUIT_JOKER));
       }
       return deck;
     }
@@ -4465,10 +4526,34 @@
       this.playAnalyzer.recordPass(playerIdx);
       this.eventBus.emit("play_result", { player: playerIdx, isPass: true });
     }
+    /**
+     * 出牌并同步记牌器（cardsOut + updateKingAfterPlay），收敛实打/复盘重复调用。
+     * 记牌器的 nowPlayType 取本手实际牌型（result.type），与出牌后 game.lastPlay.type 一致。
+     * @param {number} playerIdx
+     * @param {Object[]} cards
+     * @param {Object} prevLast - 出牌前的 lastPlay（记录器王推断用）
+     * @returns {Object} playCards 的返回结果
+     */
+    recordPlay(playerIdx, cards, prevLast) {
+      const result = this.playCards(playerIdx, cards);
+      if (result.success) {
+        this.cardTracker.cardsOut(cards, playerIdx);
+        this.cardTracker.updateKingAfterPlay({ type: "play", cards }, playerIdx, prevLast, result.type);
+      }
+      return result;
+    }
+    /**
+     * 过牌并同步记牌器王推断
+     * @param {number} playerIdx
+     * @param {Object} prevLast - 当前 lastPlay
+     */
+    recordPass(playerIdx, prevLast) {
+      this.passCards(playerIdx);
+      this.cardTracker.updateKingAfterPlay({ type: "pass", cards: [] }, playerIdx, prevLast, "");
+    }
     _handlePlayerFinished(playerIdx) {
       const rank = Object.keys(this.playerFinishOrder).length + 1;
       this.playerFinishOrder[playerIdx] = rank;
-      const names = ["\u81EA\u5DF1", "\u4E0B\u5BB6", "\u961F\u53CB", "\u4E0A\u5BB6"];
       this.eventBus.emit("player_finished", { player: playerIdx, rank });
       const teammateIdx = playerIdx ^ 2;
       if (this.playerFinishOrder[teammateIdx] !== void 0) {
@@ -4852,28 +4937,20 @@
     });
   }
   function _nextAlive(game2, fromIdx, ui2) {
-    let idx = fromIdx;
-    let count = 0;
-    while (count < 4) {
-      idx = (idx + 1) % 4;
-      if (game2.lastPlay && game2.lastPlay.player === idx) {
-        game2.lastPlay = null;
-        if (game2.playerCounts[idx] === 0) {
-          const oldIdx = idx;
-          idx = (idx + 2) % 4;
-          ui2.addLog(`\u3010${POS_NAMES[oldIdx]}\u3011\u5DF2\u51FA\u5B8C\uFF0C\u3010${POS_NAMES[idx]}\u3011\u63A5\u724C\u9996\u53D1`);
-        }
-      }
-      if (game2.playerCounts[idx] > 0) return idx;
-      count++;
+    const hadLastPlay = !!game2.lastPlay;
+    const next = nextAlivePlayer(game2, fromIdx);
+    if (hadLastPlay && !game2.lastPlay && game2.playerCounts[fromIdx] === 0) {
+      ui2.addLog(`\u3010${POS_NAMES[fromIdx]}\u3011\u5DF2\u51FA\u5B8C\uFF0C\u3010${POS_NAMES[next]}\u3011\u63A5\u724C\u9996\u53D1`);
     }
-    return idx;
+    return next;
   }
-  async function playOneDeal(game2, players2, ui2, mpConfig = null) {
-    if (!mpConfig) {
+  async function playOneDeal(game2, players2, ui2, mpConfig = null, humanSeat = 0, opts = {}) {
+    if (!mpConfig && !opts.dealt) {
       await game2.startGame();
     }
-    ui2.clearLastPlays();
+    if (!opts.dealt) {
+      ui2.clearLastPlays();
+    }
     game2.cardTracker.initKingFromHand(game2.hands[0]);
     let loopCount = 0;
     const maxLoops = 500;
@@ -4883,62 +4960,68 @@
       const player = players2[currentTurn];
       const posName = POS_NAMES[currentTurn];
       const isRemote = mpConfig && mpConfig.localDivision[currentTurn] === "remote";
-      if (currentTurn === 0) {
+      ui2.setHighlightSeat(currentTurn);
+      if (currentTurn === humanSeat) {
         ui2.setTurnInfo("\u8F6E\u5230\u4F60\u51FA\u724C");
-        ui2.updateHand(game2.hands[0]);
-        const hand = game2.hands[0];
+        ui2.updateHand(game2.hands[humanSeat]);
+        const hand = game2.hands[humanSeat];
         const lastPlay = game2.lastPlay;
         const decision = await player.aiPlayer.decide(hand, lastPlay, game2.playHistory);
         const candidates = player.aiPlayer.strategy._groupsCache?.candidates || [];
         ui2.showMyTurn(hand, lastPlay, decision, candidates, game2.cardTracker, game2.playAnalyzer);
-        const userAction = await waitUserWithTimeout(ui2, decision, mpConfig);
+        let userAction;
+        if (ui2.testActive) {
+          userAction = decision.action === "play" && decision.cards && decision.cards.length > 0 ? { action: "play", cards: decision.cards } : { action: "pass" };
+        } else {
+          userAction = await waitUserWithTimeout(ui2, decision, mpConfig);
+        }
         let finalSend = null;
         if (userAction.action === "play") {
           let playedCards = userAction.cards;
-          let result = game2.playCards(0, playedCards);
+          let result = game2.playCards(humanSeat, playedCards);
           if (!result.success) {
             while (!result.success) {
               ui2.showToast(`\u51FA\u724C\u5931\u8D25: ${result.reason}`);
-              const newDecision = await player.aiPlayer.decide(game2.hands[0], game2.lastPlay);
+              const newDecision = await player.aiPlayer.decide(game2.hands[humanSeat], game2.lastPlay);
               const newCands = player.aiPlayer.strategy._groupsCache?.candidates || [];
-              ui2.showMyTurn(game2.hands[0], game2.lastPlay, newDecision, newCands, game2.cardTracker, game2.playAnalyzer);
+              ui2.showMyTurn(game2.hands[humanSeat], game2.lastPlay, newDecision, newCands, game2.cardTracker, game2.playAnalyzer);
               const retryAction = await waitUserWithTimeout(ui2, newDecision, mpConfig);
               if (retryAction.action === "play") {
                 playedCards = retryAction.cards;
-                result = game2.playCards(0, playedCards);
+                result = game2.playCards(humanSeat, playedCards);
                 if (result.success) {
-                  player.aiPlayer.strategy.updateCacheAfterPlay(game2.hands[0], playedCards);
-                  game2.cardTracker.cardsOut(playedCards, 0);
+                  player.aiPlayer.strategy.updateCacheAfterPlay(game2.hands[humanSeat], playedCards);
+                  game2.cardTracker.cardsOut(playedCards, humanSeat);
                   game2.cardTracker.updateKingAfterPlay(
                     { type: "play", cards: playedCards },
-                    0,
+                    humanSeat,
                     null,
                     ""
                   );
-                  ui2.updateHand(game2.hands[0]);
+                  ui2.updateHand(game2.hands[humanSeat]);
                   finalSend = { type: "PLAY_ACTION", cards: playedCards, playType: result.type };
                   break;
                 }
               } else {
-                game2.passCards(0);
+                game2.passCards(humanSeat);
                 finalSend = { type: "PASS_ACTION" };
                 break;
               }
             }
           } else {
-            player.aiPlayer.strategy.updateCacheAfterPlay(game2.hands[0], userAction.cards);
-            game2.cardTracker.cardsOut(userAction.cards, 0);
+            player.aiPlayer.strategy.updateCacheAfterPlay(game2.hands[humanSeat], userAction.cards);
+            game2.cardTracker.cardsOut(userAction.cards, humanSeat);
             game2.cardTracker.updateKingAfterPlay(
               { type: "play", cards: userAction.cards },
-              0,
+              humanSeat,
               null,
               ""
             );
-            ui2.updateHand(game2.hands[0]);
+            ui2.updateHand(game2.hands[humanSeat]);
             finalSend = { type: "PLAY_ACTION", cards: userAction.cards, playType: result.type };
           }
         } else {
-          game2.passCards(0);
+          game2.passCards(humanSeat);
           finalSend = { type: "PASS_ACTION" };
         }
         if (mpConfig && finalSend) {
@@ -4968,30 +5051,16 @@
           return;
         }
         if (remoteAction && remoteAction.type === "PLAY_ACTION") {
-          const prevLastPlay = game2.lastPlay;
-          const result = game2.playCards(currentTurn, remoteAction.data.cards);
+          const result = game2.recordPlay(currentTurn, remoteAction.data.cards, game2.lastPlay);
           if (result.success) {
-            game2.cardTracker.cardsOut(remoteAction.data.cards, currentTurn);
-            game2.cardTracker.updateKingAfterPlay(
-              { type: "play", cards: remoteAction.data.cards },
-              currentTurn,
-              prevLastPlay,
-              game2.lastPlay?.type
-            );
             ui2.updateHand(game2.hands[0]);
           } else {
             game2.passCards(currentTurn);
           }
         } else {
-          game2.passCards(currentTurn);
-          game2.cardTracker.updateKingAfterPlay(
-            { type: "pass", cards: [] },
-            currentTurn,
-            game2.lastPlay,
-            ""
-          );
+          game2.recordPass(currentTurn, game2.lastPlay);
         }
-        ui2.updatePlayerCounts(game2.playerCounts);
+        ui2.updatePlayerCounts(game2.playerCounts, game2.hands);
       } else {
         ui2.setTurnInfo(`${posName} \u601D\u8003\u4E2D`);
         ui2.clearLastPlay(currentTurn);
@@ -5012,8 +5081,7 @@
           await sleep(remaining);
         }
         if (decision.action === "play") {
-          const prevLastPlay = game2.lastPlay;
-          const result = game2.playCards(currentTurn, decision.cards);
+          const result = game2.recordPlay(currentTurn, decision.cards, game2.lastPlay);
           if (!result.success) {
             game2.passCards(currentTurn);
             if (mpConfig) {
@@ -5021,13 +5089,6 @@
             }
           } else {
             player.aiPlayer.strategy.updateCacheAfterPlay(game2.hands[currentTurn], decision.cards);
-            game2.cardTracker.cardsOut(decision.cards, currentTurn);
-            game2.cardTracker.updateKingAfterPlay(
-              { type: "play", cards: decision.cards },
-              currentTurn,
-              prevLastPlay,
-              game2.lastPlay.type
-            );
             if (mpConfig) {
               mpConfig.network.send("PLAY_ACTION", {
                 player: mpConfig.localToGlobal[currentTurn],
@@ -5037,13 +5098,7 @@
             }
           }
         } else {
-          game2.passCards(currentTurn);
-          game2.cardTracker.updateKingAfterPlay(
-            { type: "pass", cards: [] },
-            currentTurn,
-            game2.lastPlay,
-            ""
-          );
+          game2.recordPass(currentTurn, game2.lastPlay);
           if (mpConfig) {
             mpConfig.network.send("PASS_ACTION", { player: mpConfig.localToGlobal[currentTurn] });
           }
@@ -5121,11 +5176,13 @@
   async function runGame(game2, players2, ui2, eventBus2, maxDeals = Infinity) {
     const MAX_LEVEL = 14;
     let dealsPlayed = 0;
+    let aborted = false;
     const onDealOver = (data) => {
       const isGameEnd = game2.currentLevel >= MAX_LEVEL || maxDeals !== Infinity && dealsPlayed >= maxDeals;
       const { html, title, sortedRanks } = buildDealOverHtml(data, dealsPlayed, isGameEnd, ui2);
       let fullHtml = html;
       fullHtml += '<div class="modal-actions">';
+      fullHtml += '<button id="btn-replay" class="btn-replay">\u590D\u76D8</button>';
       fullHtml += '<button id="btn-close-deal">\u5173\u95ED</button>';
       if (isGameEnd) {
         fullHtml += '<button id="btn-next-deal" class="btn-new-game">\u65B0\u6E38\u620F</button>';
@@ -5149,6 +5206,7 @@
           await new Promise((resolve) => {
             const nextBtn = document.getElementById("btn-next-deal");
             const closeBtn = document.getElementById("btn-close-deal");
+            const replayBtn = document.getElementById("btn-replay");
             if (!nextBtn) {
               resolve();
               return;
@@ -5164,6 +5222,14 @@
                 resolve();
               }
             };
+            if (replayBtn) {
+              replayBtn.onclick = () => {
+                aborted = true;
+                document.getElementById("deal-over-modal").classList.add("hidden");
+                if (ui2.onReplay) ui2.onReplay();
+                resolve();
+              };
+            }
             if (closeBtn) {
               closeBtn.onclick = () => {
                 document.getElementById("deal-over-modal").classList.add("hidden");
@@ -5172,19 +5238,21 @@
           }).finally(() => {
             game2.dealOverPending = false;
           });
+          if (aborted) break;
         }
         if (maxDeals !== Infinity && dealsPlayed >= maxDeals) break;
       }
     } finally {
       eventBus2.off("deal_over", onDealOver);
     }
-    let reason = game2.currentLevel >= MAX_LEVEL ? "\u7EA7\u724C\u5347\u81F3\u6700\u9AD8(A)" : `\u5DF2\u5B8C\u6210 ${maxDeals} \u526F\u724C`;
-    ui2.addLog(`\u6E38\u620F\u7ED3\u675F (${reason})\uFF0C\u5171 ${dealsPlayed} \u526F\u724C`);
-    ui2.setTurnInfo("\u6E38\u620F\u7ED3\u675F");
+    if (!aborted) {
+      let reason = game2.currentLevel >= MAX_LEVEL ? "\u7EA7\u724C\u5347\u81F3\u6700\u9AD8(A)" : `\u5DF2\u5B8C\u6210 ${maxDeals} \u526F\u724C`;
+      ui2.addLog(`\u6E38\u620F\u7ED3\u675F (${reason})\uFF0C\u5171 ${dealsPlayed} \u526F\u724C`);
+      ui2.setTurnInfo("\u6E38\u620F\u7ED3\u675F");
+    }
   }
 
   // guandan/js/ui.js
-  var POS_NAMES2 = ["\u81EA\u5DF1", "\u4E0B\u5BB6", "\u961F\u53CB", "\u4E0A\u5BB6"];
   var POS0_NAMES = ["\u6211", "\u4E0B", "\u53CB", "\u4E0A"];
   var SUIT_ORDER = { SPADE: 0, CLUB: 1, DIAMOND: 2, HEART: 3 };
   var CARD_W = 30;
@@ -5201,18 +5269,6 @@
     FOUR_JOKERS: "\u5929\u70B8",
     WILD: "\u4E07\u80FD"
   };
-  function getCardColorClass(card) {
-    if (card.suit === "JOKER") return card.value === 17 ? "red" : "black";
-    return SUIT_COLOR[card.suit] || "black";
-  }
-  function getRankText(card) {
-    if (card.suit === "JOKER") return card.value === 17 ? "\u5927" : "\u5C0F";
-    return VALUE_TO_DISPLAY[card.value] || String(card.value);
-  }
-  function getSuitText(card) {
-    if (card.suit === "JOKER") return "\u738B";
-    return SUIT_SYMBOL[card.suit] || "";
-  }
   var UI = class {
     constructor() {
       this._el = {
@@ -5249,7 +5305,19 @@
         tableRightCount: document.querySelector("#pos-right .card-count"),
         tableRightLastPlay: document.querySelector("#pos-right .last-play-area"),
         tableMyCount: document.querySelector("#my-area .card-count"),
-        tableMyLastPlay: document.getElementById("my-last-play")
+        tableMyLastPlay: document.getElementById("my-last-play"),
+        tableCorners: document.getElementById("table-corners"),
+        handsStrip: document.getElementById("hands-strip"),
+        // 复盘回放
+        replayControls: document.getElementById("replay-controls"),
+        rpFirst: document.getElementById("rp-first"),
+        rpPrev: document.getElementById("rp-prev"),
+        rpStep: document.getElementById("rp-step"),
+        rpNext: document.getElementById("rp-next"),
+        rpLast: document.getElementById("rp-last"),
+        replayHand: document.getElementById("replay-hand"),
+        replayHandLabel: document.getElementById("replay-hand-label"),
+        replayHandCards: document.getElementById("replay-hand-cards")
       };
       this._myHand = [];
       this._selectedIndices = /* @__PURE__ */ new Set();
@@ -5264,17 +5332,38 @@
       this._candidates = [];
       this._selectedCandidates = /* @__PURE__ */ new Set();
       this._tableOpen = false;
+      this._inReplay = false;
+      this._replayPlaying = false;
+      this._highlightSeat = 0;
+      this.testMode = true;
+      this.testActive = false;
       this.onNewGame = null;
+      this.onTest = null;
       this.onLLMRequest = null;
+      this.onReplay = null;
+      this.onReplayStep = null;
+      this.onReplayToggle = null;
+      this.onReplayJump = null;
+      this.onReplayJumpTo = null;
+      this.onReplayTry = null;
+      this.onReplaySwitchPlayer = null;
       this._el.myHand.addEventListener("click", (e) => {
         const cardEl = e.target.closest(".card");
         if (!cardEl || !this._isMyTurn) return;
         this._toggleCard(parseInt(cardEl.dataset.idx, 10));
       });
-      this._el.btnPlay.addEventListener("click", () => this._doPlay());
+      this._el.btnPlay.addEventListener("click", () => {
+        if (this._inReplay) {
+          if (this.onReplayTry) this.onReplayTry();
+          return;
+        }
+        this._doPlay();
+      });
       this._el.gameBar.addEventListener("click", (e) => {
         if (e.target.closest("button")) return;
         if (e.target.closest(".card")) return;
+        if (e.target.closest("#replay-hand")) return;
+        if (e.target.closest("#replay-controls")) return;
         this._toggleTableOverlay();
         const modal = this._el.dealOverModal;
         if (modal && !modal.classList.contains("hidden")) modal.classList.add("hidden");
@@ -5299,13 +5388,43 @@
           }
         });
       }
-      this._el.btnPass.addEventListener("click", () => this._doPass());
+      this._el.btnPass.addEventListener("click", () => {
+        if (this._inReplay) {
+          if (this.onReplayToggle) this.onReplayToggle();
+          return;
+        }
+        if (this.testMode && !this.testActive) {
+          if (this.onTest) {
+            this.onTest();
+            return;
+          }
+        }
+        this._doPass();
+      });
       this._el.btnNew.addEventListener("click", () => {
         if (this.onNewGame) this.onNewGame();
       });
       this._el.btnLog.addEventListener("click", () => this._el.logPanel.classList.toggle("hidden"));
       this._el.btnLogClose.addEventListener("click", () => this._el.logPanel.classList.add("hidden"));
       this._el.btnCancel.addEventListener("click", () => this._clearSelection());
+      this._el.rpFirst.addEventListener("click", () => {
+        if (this.onReplayJump) this.onReplayJump("first");
+      });
+      this._el.rpPrev.addEventListener("click", () => {
+        if (this.onReplayStep) this.onReplayStep(-1);
+      });
+      this._el.rpNext.addEventListener("click", () => {
+        if (this.onReplayStep) this.onReplayStep(1);
+      });
+      this._el.rpLast.addEventListener("click", () => {
+        if (this.onReplayJump) this.onReplayJump("last");
+      });
+      if (this._el.replayHand) {
+        this._el.replayHand.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (this.onReplaySwitchPlayer) this.onReplaySwitchPlayer();
+        });
+      }
       window.addEventListener("resize", () => {
         if (this._tableOpen) {
           this._syncSidePlayAreas();
@@ -5326,7 +5445,28 @@
       return null;
     }
     get aiDelay() {
-      return 300;
+      return this.testActive ? 0 : 300;
+    }
+    /** 更新测试模式状态并同步过牌按钮文案 */
+    setTestMode(mode) {
+      this.testMode = mode;
+      const btn = this._el.btnPass;
+      if (btn && !this._inReplay) btn.textContent = mode ? "\u6D4B\u8BD5" : "\u8FC7\u724C";
+    }
+    /** 测试激活时：若正等待人类操作，用 AI 推荐的预选牌自动出牌（或过牌） */
+    autoResolveTest() {
+      if (!this._resolve) return;
+      let selected = this._collectSelected();
+      if (selected.length === 0 && this._lastPlay) {
+        this._finish({ action: "pass" });
+        return;
+      }
+      if (selected.length === 0 && this._myHand.length > 0) {
+        this._selectedIndices.clear();
+        this._selectedIndices.add(0);
+        selected = [this._myHand[0]];
+      }
+      if (selected.length > 0) this._finish({ action: "play", cards: selected });
     }
     updateLLMPanel() {
     }
@@ -5344,15 +5484,22 @@
       this._el.turnInfo.textContent = text || "";
       if (this._el.tableTurnInfo) this._el.tableTurnInfo.textContent = text || "";
     }
-    updatePlayerCounts(counts) {
+    /** 设置第一行高亮的座位（试打时高亮接管的那家） */
+    setHighlightSeat(seat) {
+      this._highlightSeat = seat;
+      if (this._counts) this.updatePlayerCounts(this._counts);
+      this._updateTableInfo();
+    }
+    updatePlayerCounts(counts, hands) {
       this._counts = counts;
+      if (hands) this._tableHands = hands;
       this._el.counts.innerHTML = [0, 1, 2, 3].map((p) => {
         const play = this._lastPlays[p];
         let cardsHtml = "";
         if (play) {
           cardsHtml = play.isPass ? '<span class="mini-cards lp-cards">\u8FC7</span>' : `<span class="mini-cards lp-cards">${(play.cards || []).map((c) => this._renderCardMini(c)).join("")}</span>`;
         }
-        return `<span class="count-group ${p === 0 ? "self" : ""}"><span class="count-chip">${POS0_NAMES[p]}: ${counts[p]}</span>` + cardsHtml + `</span>`;
+        return `<span class="count-group ${p === this._highlightSeat ? "self" : ""}"><span class="count-chip">${POS0_NAMES[p]}: ${counts[p]}</span>` + cardsHtml + `</span>`;
       }).join("");
       this._updateTableInfo();
     }
@@ -5421,8 +5568,8 @@
     _renderCard(card, idx, extra, marginLeft, marginTop) {
       const color = getCardColorClass(card);
       const wild = isWildCard(card) ? "wild" : "";
-      const rank = getRankText(card);
-      const suit = getSuitText(card);
+      const rank = getRankDisplay(card);
+      const suit = getSuitSymbol(card);
       const idxAttr = idx !== void 0 ? `data-idx="${idx}"` : "";
       const styleParts = [];
       if (marginLeft !== void 0) styleParts.push(`margin-left:${marginLeft}px`);
@@ -5432,14 +5579,14 @@
     }
     _renderCardMini(card) {
       const color = getCardColorClass(card);
-      const rank = getRankText(card);
-      const suit = getSuitText(card);
+      const rank = getRankDisplay(card);
+      const suit = getSuitSymbol(card);
       return `<span class="card-mini ${color}"><span class="cm-rank">${rank}</span><span class="cm-suit">${suit}</span></span>`;
     }
     _renderCardMax(card) {
       const color = getCardColorClass(card);
-      const rank = getRankText(card);
-      const suit = getSuitText(card);
+      const rank = getRankDisplay(card);
+      const suit = getSuitSymbol(card);
       return `<span class="card-max ${color}"><span class="cm-rank">${rank}</span><span class="cm-suit">${suit}</span></span>`;
     }
     /** 手牌区是否使用竖向排列：牌桌浮层打开且 table-panel 宽度 > 360 */
@@ -5647,7 +5794,7 @@
       if (!el) return;
       const isVertical = this._isVerticalHandLayout();
       const tracker = this._cardTracker;
-      if (!tracker || !isVertical) {
+      if (!tracker || !isVertical || this._inReplay) {
         el.innerHTML = "";
         return;
       }
@@ -5724,15 +5871,19 @@
     _openTableOverlay() {
       this._tableOpen = true;
       this._el.tableOverlay.classList.remove("hidden");
+      if (this._inReplay && this._el.replayHand) this._el.replayHand.classList.remove("hidden");
       this._syncSidePlayAreas();
       this._renderCandidates();
       this._updateTableInfo();
       this._applyLayoutMode(true);
+      this._renderTableCorners();
     }
     _closeTableOverlay() {
       this._tableOpen = false;
       this._el.tableOverlay.classList.add("hidden");
+      if (this._inReplay && this._el.replayHand) this._el.replayHand.classList.add("hidden");
       this._applyLayoutMode(false);
+      this._renderTableCorners();
     }
     /** 应用横/竖布局模式 */
     _applyLayoutMode(isVertical) {
@@ -5744,6 +5895,10 @@
     _renderCandidates() {
       const list = this._el.candidateList;
       if (!list) return;
+      if (this._inReplay) {
+        this._renderReplaySteps(list);
+        return;
+      }
       if (!this._candidates || this._candidates.length === 0) {
         list.innerHTML = '<div class="candidate-empty">\u6682\u65E0\u7EC4\u724C\u65B9\u6848</div>';
         return;
@@ -5781,6 +5936,28 @@
       this._el.myHand.innerHTML = this._renderHand(this._myHand, this._isMyTurn, this._selectedIndices);
       this._renderCandidates();
     }
+    /** 复盘模式：在左栏渲染全部步骤列表（复用组牌列表样式），点击跳到对应步 */
+    _renderReplaySteps(list) {
+      const rec = this._replayRec;
+      const step = this._replayStep;
+      if (!rec || !rec.moves || rec.moves.length === 0) {
+        list.innerHTML = '<div class="candidate-empty">\u6682\u65E0\u6B65\u9AA4</div>';
+        return;
+      }
+      list.innerHTML = rec.moves.map((m, i) => {
+        const name = POS_NAMES[m.player] || `#${m.player}`;
+        const cardsHtml = m.isPass ? '<span class="mini-cards">\u8FC7</span>' : (m.cards || []).map((c) => this._renderCardMini(c)).join("");
+        const cur2 = i === step ? " selected" : "";
+        return `<div class="candidate-group${cur2}" data-step="${i}"><span class="candidate-type">${name}</span><span class="candidate-cards mini-cards">${cardsHtml}</span></div>`;
+      }).join("");
+      list.querySelectorAll(".candidate-group").forEach((el) => {
+        el.addEventListener("click", () => {
+          if (this.onReplayJumpTo) this.onReplayJumpTo(parseInt(el.dataset.step, 10));
+        });
+      });
+      const cur = list.querySelector(".candidate-group.selected");
+      if (cur && cur.scrollIntoView) cur.scrollIntoView({ block: "nearest" });
+    }
     /** 同步牌桌：四家剩余张数 + 各家最后出牌 */
     _updateTableInfo() {
       if (!this._tableOpen) return;
@@ -5801,6 +5978,7 @@
       ];
       for (const { area, pos } of areas) {
         if (!area) continue;
+        area.classList.toggle("turn-active", pos === this._highlightSeat);
         const play = this._lastPlays[pos];
         if (!play) {
           area.innerHTML = "";
@@ -5808,6 +5986,71 @@
         }
         area.innerHTML = play.isPass ? '<span class="table-pass">\u8FC7</span>' : `<span class="mini-cards">${(play.cards || []).map((c) => this._renderTableCard(c)).join("")}</span>`;
       }
+      this._renderTableCorners();
+    }
+    /**
+     * 复盘时渲染四家手牌。
+     * - 牌桌打开且宽度 >540：渲染到牌桌四角
+     * - 牌桌未打开：渲染到游戏栏上方的流式区块 #hands-strip（每家一行，占据布局空间）
+     */
+    _renderTableCorners() {
+      const hands = this._tableHands || [];
+      if (!this._inReplay) {
+        if (this._el.tableCorners) this._el.tableCorners.innerHTML = "";
+        if (this._el.handsStrip) this._el.handsStrip.classList.add("hidden");
+        return;
+      }
+      if (this._tableOpen) {
+        if (this._el.handsStrip) this._el.handsStrip.classList.add("hidden");
+        const corners = this._el.tableCorners;
+        if (!corners) return;
+        const panel = this._el.tablePanel;
+        const size = panel ? panel.getBoundingClientRect().width : 0;
+        if (size <= 500) {
+          corners.innerHTML = "";
+          return;
+        }
+        const cfg = [
+          { cls: "corner-tl", pos: 3, label: "\u4E0A\u5BB6" },
+          // 左上
+          { cls: "corner-bl", pos: 0, label: "\u81EA\u5DF1" },
+          // 左下
+          { cls: "corner-br", pos: 1, label: "\u4E0B\u5BB6" },
+          // 右下
+          { cls: "corner-tr", pos: 2, label: "\u961F\u53CB" }
+          // 右上
+        ];
+        corners.innerHTML = cfg.map(({ cls, pos }) => {
+          const hand = hands[pos] || [];
+          const cardsHtml = hand.length ? hand.map((c) => this._renderCardMini(c)).join("") : '<span class="corner-empty">\u5DF2\u51FA\u5B8C</span>';
+          return `<div class="table-corner ${cls}"><div class="corner-cards">${cardsHtml}</div></div>`;
+        }).join("");
+      } else {
+        if (this._el.tableCorners) this._el.tableCorners.innerHTML = "";
+        this._renderHandsStrip(hands);
+      }
+    }
+    /** 游戏栏上方区块：四家手牌各一行（自上而下：上家 → 队友 → 下家 → 自己，自己紧贴游戏栏） */
+    _renderHandsStrip(hands) {
+      const strip = this._el.handsStrip;
+      if (!strip) return;
+      const order = [
+        { pos: 3, label: "\u4E0A\u5BB6" },
+        { pos: 2, label: "\u961F\u53CB" },
+        { pos: 1, label: "\u4E0B\u5BB6" },
+        { pos: 0, label: "\u81EA\u5DF1" }
+      ];
+      strip.innerHTML = order.map(({ pos, label }) => {
+        const hand = hands[pos] || [];
+        const cardsHtml = hand.length ? hand.map((c) => this._renderCardMini(c)).join("") : '<span class="corner-empty">\u5DF2\u51FA\u5B8C</span>';
+        return `<div class="hand-strip-row"><span class="hand-strip-label">${label}</span><span class="hand-strip-cards">${cardsHtml}</span></div>`;
+      }).join("");
+      strip.classList.remove("hidden");
+    }
+    /** 设置四家手牌（复盘展示用） */
+    updateTableHands(hands) {
+      this._tableHands = hands;
+      if (this._tableOpen || this._inReplay) this._renderTableCorners();
     }
     // ---------- 日志 / 提示 ----------
     addLog(msg) {
@@ -5834,11 +6077,88 @@
     }
     // ---------- 本局结束 ----------
     showDealOver(html, title) {
+      if (this.testActive) {
+        this.testActive = false;
+        this.setTestMode(this.testMode);
+      }
       this._el.dealOverBox.innerHTML = html;
       this._el.dealOverModal.classList.remove("hidden");
     }
     hideDealOver() {
       this._el.dealOverModal.classList.add("hidden");
+    }
+    // ---------- 复盘 / 试打 ----------
+    setNewButton(label) {
+      if (this._el.btnNew) this._el.btnNew.textContent = label;
+    }
+    /** 进入复盘界面：手牌区换成「回放控件」，单家手牌仅牌桌打开时显示；「出牌」按钮变为试打入口 */
+    enterReplay() {
+      this._inReplay = true;
+      this._el.myHand.style.display = "none";
+      this._el.replayControls.classList.remove("hidden");
+      this._el.replayHand.classList.toggle("hidden", !this._tableOpen);
+      if (this._el.handArea) this._el.handArea.classList.add("replay-hand-area");
+      if (this._el.tableOverlay) this._el.tableOverlay.classList.add("replay-mode");
+      if (this._el.btnPlay) {
+        this._el.btnPlay.textContent = "\u8BD5\u6253";
+        this._el.btnPlay.disabled = true;
+      }
+      if (this._el.btnPass) {
+        this._el.btnPass.textContent = "\u64AD\u653E";
+        this._el.btnPass.disabled = false;
+      }
+    }
+    /** 退出复盘界面：恢复手牌区 */
+    exitReplay() {
+      this._inReplay = false;
+      this._el.myHand.style.display = "";
+      this._el.replayHand.classList.add("hidden");
+      this._el.replayControls.classList.add("hidden");
+      if (this._el.handArea) this._el.handArea.classList.remove("replay-hand-area");
+      if (this._el.tableOverlay) this._el.tableOverlay.classList.remove("replay-mode");
+      if (this._el.btnPlay) {
+        this._el.btnPlay.textContent = "\u51FA\u724C";
+        this._el.btnPlay.disabled = true;
+      }
+      if (this._el.btnPass) {
+        this._el.btnPass.textContent = this.testMode ? "\u6D4B\u8BD5" : "\u8FC7\u724C";
+        this._el.btnPass.disabled = true;
+      }
+      this._renderTableCorners();
+    }
+    /**
+     * 渲染某步复盘的「单家手牌」与回放控件
+     * @param {{game:Object, step:number, total:number, lastPlays:Object, dispPlayer:number}} st
+     */
+    renderReplay(st) {
+      const { game: game2, step, total, lastPlays, dispPlayer } = st;
+      if (st.rec) this._replayRec = st.rec;
+      this._replayStep = step;
+      const names = POS_NAMES;
+      const cur = game2.gameState === "idle" ? "\u672C\u526F\u7ED3\u675F" : `\u8F6E\u5230 ${names[game2.currentTurn]}`;
+      this.setTurnInfo(`\u590D\u76D8 ${step}/${total} \xB7 ${cur}`);
+      if (this._el.replayHandLabel) this._el.replayHandLabel.textContent = names[dispPlayer];
+      if (this._el.replayHandCards) {
+        const hand = game2.hands[dispPlayer] || [];
+        this._el.replayHandCards.innerHTML = hand.length ? `<span class="mini-cards">${hand.map((c) => this._renderCardMini(c)).join("")}</span>` : '<span class="replay-empty">\u5DF2\u51FA\u5B8C</span>';
+      }
+      this._lastPlays = lastPlays || {};
+      this._highlightSeat = game2.gameState === "idle" ? 0 : game2.currentTurn;
+      this.updatePlayerCounts(game2.playerCounts, game2.hands);
+      this.updateReplayControls(step, total, this._replayPlaying);
+      if (this._tableOpen) this._renderCandidates();
+      this._renderTableCorners();
+    }
+    /** 更新回放控件可用状态与步数指示 */
+    updateReplayControls(step, total, playing = false) {
+      this._replayPlaying = playing;
+      if (this._el.rpStep) this._el.rpStep.textContent = `${step}/${total}`;
+      if (this._el.rpFirst) this._el.rpFirst.disabled = step <= 0;
+      if (this._el.rpPrev) this._el.rpPrev.disabled = step <= 0;
+      if (this._el.rpNext) this._el.rpNext.disabled = step >= total;
+      if (this._el.rpLast) this._el.rpLast.disabled = step >= total;
+      if (this._el.btnPass && this._inReplay) this._el.btnPass.textContent = playing ? "\u6682\u505C" : "\u64AD\u653E";
+      if (this._el.btnPlay && this._inReplay) this._el.btnPlay.disabled = step >= total;
     }
     _showSummaryModal(content) {
       this._el.dealOverBox.innerHTML = `<div class="deal-over-body"><h2>\u5BF9\u5C40\u603B\u7ED3</h2><div class="log-content" style="max-height:40vh">${content}</div><div class="modal-actions"><button class="btn ghost-btn" id="btn-back-deal">\u8FD4\u56DE</button></div></div>`;
@@ -5894,7 +6214,7 @@
             otherHtml = `<div class="other-hand-row"><span class="row-label">\u5176\u4F59\u624B\u724C</span>` + otherCards.map((c) => this._renderCard(c, void 0, "", 0)).join("") + `</div>`;
           }
           const label = options.type === "return" ? "\u56DE\u8D21" : "\u8FDB\u8D21";
-          content.innerHTML = `<h3>${label}\uFF1A${POS_NAMES2[options.fromPlayer]} \u2192 ${POS_NAMES2[options.toPlayer]}</h3><p>\u8BF7\u9009\u62E9\u4E00\u5F20\u724C${label}\u3002</p><div class="candidate-row"><span class="row-label">\u53EF\u9009\u724C</span>${candHtml}</div>` + otherHtml + `<div class="modal-actions"><button class="btn primary" id="tribute-ok">\u786E\u5B9A</button></div>`;
+          content.innerHTML = `<h3>${label}\uFF1A${POS_NAMES[options.fromPlayer]} \u2192 ${POS_NAMES[options.toPlayer]}</h3><p>\u8BF7\u9009\u62E9\u4E00\u5F20\u724C${label}\u3002</p><div class="candidate-row"><span class="row-label">\u53EF\u9009\u724C</span>${candHtml}</div>` + otherHtml + `<div class="modal-actions"><button class="btn primary" id="tribute-ok">\u786E\u5B9A</button></div>`;
         }
         this._el.tributeModal.classList.remove("hidden");
         let selectedIndex = options.isResist ? -1 : recommendedIndex;
@@ -5920,7 +6240,7 @@
         const content = this._el.tributeContent;
         const cardHtml = options.card ? this._renderCard(options.card, 0, "") : "";
         const label = options.type === "return" ? "\u56DE\u8D21" : "\u8FDB\u8D21";
-        content.innerHTML = `<h3>${label}</h3><p>${POS_NAMES2[options.fromPlayer]} \u5411 ${POS_NAMES2[options.toPlayer]} ${label}\uFF1A</p><div class="candidate-row">${cardHtml}</div><div class="modal-actions"><button class="btn" id="tribute-ok">\u77E5\u9053\u4E86</button></div>`;
+        content.innerHTML = `<h3>${label}</h3><p>${POS_NAMES[options.fromPlayer]} \u5411 ${POS_NAMES[options.toPlayer]} ${label}\uFF1A</p><div class="candidate-row">${cardHtml}</div><div class="modal-actions"><button class="btn" id="tribute-ok">\u77E5\u9053\u4E86</button></div>`;
         this._el.tributeModal.classList.remove("hidden");
         content.querySelector("#tribute-ok").addEventListener("click", () => {
           this._el.tributeModal.classList.add("hidden");
@@ -5930,9 +6250,61 @@
     }
   };
 
+  // guandan/js/replay.js
+  function initReplayGame(rec) {
+    const bus = new EventBus();
+    const game2 = new Game({ level: rec.level, eventBus: bus });
+    const firstP = rec.moves[0]?.player ?? 0;
+    game2.currentLevel = rec.level;
+    game2.hands = rec.initialHands.map((h) => sortCards(cloneHand(h)));
+    game2.playerCounts = game2.hands.map((h) => h.length);
+    game2.tablePlays = [null, null, null, null];
+    game2.lastPlay = null;
+    game2.lastPlayer = -1;
+    game2.finishOrder = [];
+    game2.playerFinishOrder = {};
+    game2.playHistory = [];
+    game2.tributeState = { lastFinishOrder: [], tributes: [], returnTributes: [], firstPlayer: firstP };
+    game2.gameState = "playing";
+    game2.cardTracker.reset(game2.currentLevel);
+    game2.playAnalyzer.reset(game2.currentLevel, game2.cardTracker);
+    game2.cardTracker.setPlayerCounts([...game2.playerCounts]);
+    return game2;
+  }
+  function buildReplayGame(rec, step) {
+    const game2 = initReplayGame(rec);
+    game2.currentTurn = rec.moves[0]?.player ?? 0;
+    for (let i = 0; i < step; i++) {
+      const m = rec.moves[i];
+      game2.currentTurn = m.player;
+      const prevLast = game2.lastPlay;
+      if (m.isPass) {
+        game2.recordPass(m.player, prevLast);
+      } else {
+        game2.recordPlay(m.player, m.cards, prevLast);
+      }
+      game2.currentTurn = nextAlivePlayer(game2, m.player);
+    }
+    if (step >= rec.moves.length) {
+      game2.gameState = "idle";
+      game2.currentTurn = -1;
+    }
+    game2.cardTracker.initKingFromHand(game2.hands[0]);
+    return game2;
+  }
+  function replayLastPlays(rec, step) {
+    const lp = {};
+    for (let i = 0; i < step; i++) {
+      const m = rec.moves[i];
+      if (m.isPass) lp[m.player] = { isPass: true };
+      else lp[m.player] = { isPass: false, cards: m.cards, type: m.type };
+    }
+    return lp;
+  }
+
   // guandan/js/main.js
-  var POS_NAMES3 = ["\u81EA\u5DF1", "\u4E0B\u5BB6", "\u961F\u53CB", "\u4E0A\u5BB6"];
   var gameConfig = { level: 2, maxDeals: 20 };
+  var TRYPLAY_DEBUG = true;
   var guandanTheme = /* @__PURE__ */ (function() {
     const KEY = "guandan-theme";
     function rootEl() {
@@ -5969,13 +6341,53 @@
   var eventBus = new EventBus();
   var game = null;
   var players = null;
-  ui.onNewGame = () => {
+  var dealRecord = null;
+  var currentMode = "play";
+  var replayState = null;
+  var tryplayState = null;
+  var tryplayDealOverHandler = null;
+  function teardownModes() {
+    stopAutoPlay();
+    if (currentMode !== "play" || replayState) ui.exitReplay();
+    if (tryplayDealOverHandler) {
+      eventBus.off("deal_over", tryplayDealOverHandler);
+      tryplayDealOverHandler = null;
+    }
+    if (currentMode === "tryplay" && TRYPLAY_DEBUG) {
+      console.log("[TRYPLAY] \u9000\u51FA\u8BD5\u6253\uFF0C\u6062\u590D AI \u51B3\u7B56\u65E5\u5FD7\u9759\u9ED8");
+      if (players) {
+        for (const p of players) {
+          if (p.aiPlayer?.strategy) p.aiPlayer.strategy._quiet = true;
+        }
+      }
+    }
+    replayState = null;
+    tryplayState = null;
+    currentMode = "play";
+    ui.setNewButton("\u65B0\u5C40");
+    ui.onNewGame = originalOnNewGame;
+  }
+  var originalOnNewGame = () => {
+    teardownModes();
     eventBus.removeAllListeners("deal_over");
     const dealOverModal = document.getElementById("deal-over-modal");
     if (dealOverModal) dealOverModal.classList.add("hidden");
     const tributeModal = document.getElementById("tribute-modal");
     if (tributeModal) tributeModal.classList.add("hidden");
     startGame(true);
+  };
+  ui.onNewGame = originalOnNewGame;
+  ui.onReplay = enterReplay;
+  ui.onReplayStep = (delta) => replayStep(delta);
+  ui.onReplayToggle = toggleAutoPlay;
+  ui.onReplayJump = (where) => replayJump(where);
+  ui.onReplayJumpTo = (step) => replayJumpTo(step);
+  ui.onReplayTry = tryPlay;
+  ui.onReplaySwitchPlayer = switchReplayPlayer;
+  ui.onTest = () => {
+    ui.testActive = true;
+    ui.setTestMode(true);
+    ui.autoResolveTest();
   };
   function subscribeEvents() {
     eventBus.on("deal", (data) => {
@@ -5984,10 +6396,22 @@
       ui.clearLastPlays();
       ui.clearLog();
       ui.addLog(`\u7B2C${data.dealNumber}\u526F\u724C\u5DF2\u53D1\uFF0C\u7EA7\u724C=${data.level}`);
+      dealRecord = {
+        level: data.level,
+        initialHands: data.hands.map((h) => h.map((c) => ({ ...c }))),
+        firstPlayer: data.firstPlayer,
+        moves: []
+      };
     });
     eventBus.on("play_result", (data) => {
-      const name = POS_NAMES3[data.player];
+      if (data.player === 0 && !data.isPass && !ui.testActive) {
+        ui.setTestMode(false);
+      }
+      const name = POS_NAMES[data.player];
       const count = game.playerCounts[data.player];
+      if (currentMode === "play" && dealRecord) {
+        dealRecord.moves.push({ player: data.player, isPass: !!data.isPass, cards: data.cards || [], type: data.type });
+      }
       if (data.isPass) {
         game.playHistory.push(`${name} >> PASS (\u4F59${count}\u5F20)`);
         ui.addLog(`${name} >> PASS (\u5269${count}\u5F20)`);
@@ -5998,23 +6422,26 @@
         ui.addLog(`${name} >> ${formatHandType(data.type)} [${cardStr}] (\u5269${count}\u5F20)`);
         ui.updateLastPlay(data.player, { cards: data.cards, type: data.type });
       }
-      ui.updatePlayerCounts(game.playerCounts);
+      ui.updatePlayerCounts(game.playerCounts, game.hands);
     });
     eventBus.on("player_finished", (data) => {
-      const name = POS_NAMES3[data.player];
+      const name = POS_NAMES[data.player];
       ui.addLog(`\u3010${name}\u3011\u51FA\u5B8C\uFF0C\u540D\u6B21 #${data.rank}`);
     });
     eventBus.on("tribute_request", async (data) => {
       await handleTributeRequest(data);
     });
     eventBus.on("tribute", () => {
+      if (currentMode === "play" && dealRecord && game) {
+        dealRecord.initialHands = game.hands.map((h) => h.map((c) => ({ ...c })));
+      }
     });
   }
   async function handleTributeRequest(data) {
     const { tributes, resistPlayers, dealNumber } = data;
     ui.addLog(`\u7B2C${dealNumber}\u526F - \u5F00\u59CB\u8FDB\u8D21...`);
     if (resistPlayers.length > 0) {
-      const resistNames = resistPlayers.map((p) => POS_NAMES3[p]);
+      const resistNames = resistPlayers.map((p) => POS_NAMES[p]);
       ui.addLog(`\u3010${resistNames.join("\uFF0C")}\u3011\u6297\u8D21\uFF01\u6301\u6709\u4E24\u4E2A\u5927\u738B`);
       await ui.showTributeDialog({
         type: "tribute",
@@ -6024,7 +6451,7 @@
         recommendedCard: null,
         isResist: true,
         resistNames,
-        firstPlayerName: POS_NAMES3[resistPlayers[0]]
+        firstPlayerName: POS_NAMES[resistPlayers[0]]
       });
       game.skipTribute();
       return;
@@ -6067,7 +6494,7 @@
       }
       if (selectedCard) {
         tributeSelections[from] = selectedCard;
-        ui.addLog(`\u3010${POS_NAMES3[from]}\u3011\u5411\u3010${POS_NAMES3[to]}\u3011\u8FDB\u8D21: ${selectedCard.display || selectedCard.suit + selectedCard.value}`);
+        ui.addLog(`\u3010${POS_NAMES[from]}\u3011\u5411\u3010${POS_NAMES[to]}\u3011\u8FDB\u8D21: ${selectedCard.display || selectedCard.suit + selectedCard.value}`);
       }
     }
     for (const tribute of tributes) {
@@ -6107,29 +6534,17 @@
       }
       if (selectedCard) {
         returnSelections[returnPlayer] = selectedCard;
-        ui.addLog(`\u3010${POS_NAMES3[returnPlayer]}\u3011\u5411\u3010${POS_NAMES3[from]}\u3011\u8FD8\u8D21: ${selectedCard.display || selectedCard.suit + selectedCard.value}`);
+        ui.addLog(`\u3010${POS_NAMES[returnPlayer]}\u3011\u5411\u3010${POS_NAMES[from]}\u3011\u8FD8\u8D21: ${selectedCard.display || selectedCard.suit + selectedCard.value}`);
       }
     }
     game.confirmTribute(tributeSelections, returnSelections);
     ui.updateHand(game.hands[0]);
-    ui.updatePlayerCounts(game.playerCounts);
+    ui.updatePlayerCounts(game.playerCounts, game.hands);
     ui.addLog("\u8FDB\u8D21\u5B8C\u6210\uFF0C\u6E38\u620F\u5F00\u59CB");
   }
   function formatHandType(type) {
     if (!type) return "";
-    const map = {
-      single: "\u5355\u5F20",
-      pair: "\u5BF9\u5B50",
-      triple: "\u4E09\u5F20",
-      triple_with_pair: "\u4E09\u5E26\u5BF9",
-      straight: "\u987A\u5B50",
-      flush_straight: "\u540C\u82B1\u987A",
-      bomb: "\u70B8\u5F39",
-      three_pairs: "\u4E09\u8FDE\u5BF9",
-      two_triples: "\u94A2\u677F",
-      four_jokers: "\u56DB\u5927\u5929\u738B"
-    };
-    return map[type.toLowerCase()] || type;
+    return HAND_TYPE_CN[type.toLowerCase()] || type;
   }
   function createPlayers() {
     const arr = [];
@@ -6139,7 +6554,7 @@
       strategy.setGameState(i, i % 2, {});
       strategy._quiet = true;
       const aiPlayer = new PureAIPlayer(strategy, i);
-      arr.push({ mode: "pure-ai", name: POS_NAMES3[i], position: i, aiPlayer, strategy });
+      arr.push({ mode: "pure-ai", name: POS_NAMES[i], position: i, aiPlayer, strategy });
     }
     return arr;
   }
@@ -6154,7 +6569,8 @@
     ui.clearLog();
     ui.updateGameInfo("");
     ui.setTurnInfo("\u51C6\u5907\u5F00\u59CB...");
-    ui.updatePlayerCounts(game.playerCounts);
+    ui.updatePlayerCounts(game.playerCounts, game.hands);
+    if (ui.testMode) ui.setTestMode(true);
     const level = gameConfig.level || 2;
     if (isNewGame) {
       game.reset();
@@ -6163,6 +6579,171 @@
       game.currentLevel = level;
     }
     await runGame(game, players, ui, eventBus);
+  }
+  function enterReplay() {
+    const rec = dealRecord;
+    if (!rec || !rec.moves) return;
+    teardownModes();
+    currentMode = "replay";
+    replayState = { rec, step: 0, playing: false, timer: null, follow: true, fixed: 0 };
+    ui.enterReplay();
+    renderReplayStep();
+  }
+  function replayDisplayPlayer(g) {
+    const s = replayState;
+    if (!s) return 0;
+    if (!s.follow) return s.fixed;
+    return g.gameState === "idle" ? 0 : g.currentTurn;
+  }
+  function renderReplayStep() {
+    const s = replayState;
+    if (!s) return;
+    const g = buildReplayGame(s.rec, s.step);
+    const lp = replayLastPlays(s.rec, s.step);
+    ui.renderReplay({ rec: s.rec, game: g, step: s.step, total: s.rec.moves.length, lastPlays: lp, dispPlayer: replayDisplayPlayer(g) });
+  }
+  function switchReplayPlayer() {
+    const s = replayState;
+    if (!s) return;
+    const g = buildReplayGame(s.rec, s.step);
+    const cur = replayDisplayPlayer(g);
+    s.follow = false;
+    s.fixed = (cur + 1) % 4;
+    renderReplayStep();
+  }
+  function replayStep(delta) {
+    if (!replayState) return;
+    const n = replayState.step + delta;
+    if (n < 0 || n > replayState.rec.moves.length) return;
+    stopAutoPlay();
+    replayState.step = n;
+    replayState.follow = true;
+    renderReplayStep();
+  }
+  function replayJump(where) {
+    const s = replayState;
+    if (!s) return;
+    stopAutoPlay();
+    s.step = where === "last" ? s.rec.moves.length : 0;
+    s.follow = true;
+    renderReplayStep();
+  }
+  function replayJumpTo(step) {
+    const s = replayState;
+    if (!s) return;
+    if (step < 0 || step > s.rec.moves.length) return;
+    stopAutoPlay();
+    s.step = step;
+    s.follow = true;
+    renderReplayStep();
+  }
+  function toggleAutoPlay() {
+    if (!replayState) return;
+    if (replayState.playing) stopAutoPlay();
+    else startAutoPlay();
+  }
+  function startAutoPlay() {
+    if (!replayState) return;
+    const s = replayState;
+    s.playing = true;
+    ui.updateReplayControls(s.step, s.rec.moves.length, true);
+    s.timer = setInterval(() => {
+      if (!replayState || !replayState.playing) return;
+      if (s.step >= s.rec.moves.length) {
+        stopAutoPlay();
+        return;
+      }
+      s.step++;
+      renderReplayStep();
+    }, 900);
+  }
+  function stopAutoPlay() {
+    if (!replayState) return;
+    if (replayState.timer) {
+      clearInterval(replayState.timer);
+      replayState.timer = null;
+    }
+    if (replayState.playing) {
+      replayState.playing = false;
+      ui.updateReplayControls(replayState.step, replayState.rec.moves.length, false);
+    }
+  }
+  function tryPlay() {
+    const s = replayState;
+    if (!s || s.step >= s.rec.moves.length) return;
+    const g = buildReplayGame(s.rec, s.step);
+    if (g.gameState !== "playing") return;
+    stopAutoPlay();
+    const humanSeat = g.currentTurn;
+    ui.exitReplay();
+    currentMode = "tryplay";
+    tryplayState = { rec: s.rec, forkStep: s.step, humanSeat };
+    ui.setNewButton("\u8FD4\u56DE");
+    ui.onNewGame = () => returnToReplay();
+    runTryPlayDeal(s.rec, s.step, humanSeat);
+  }
+  function returnToReplay() {
+    const tp = tryplayState;
+    if (!tp) return;
+    stopAutoPlay();
+    const { rec, forkStep } = tp;
+    tryplayState = null;
+    currentMode = "replay";
+    replayState = { rec, step: forkStep, playing: false, timer: null, follow: true, fixed: 0 };
+    ui.setHighlightSeat(0);
+    ui.setNewButton("\u65B0\u5C40");
+    ui.onNewGame = originalOnNewGame;
+    ui.enterReplay();
+    renderReplayStep();
+  }
+  async function runTryPlayDeal(rec, forkStep, humanSeat) {
+    const g = buildReplayGame(rec, forkStep);
+    g.gameState = "playing";
+    if (g.currentTurn !== humanSeat) g.currentTurn = humanSeat;
+    g.eventBus = eventBus;
+    game = g;
+    players = createPlayers();
+    for (const p of players) {
+      if (p.aiPlayer?.strategy) p.aiPlayer.strategy.setTracker(game.cardTracker);
+    }
+    if (TRYPLAY_DEBUG) {
+      console.log(`[TRYPLAY] \u8FDB\u5165\u8BD5\u6253\u8C03\u8BD5\uFF1A\u4ECE\u7B2C ${forkStep} \u6B65\u63A5\u7BA1 ${POS_NAMES[humanSeat]}\uFF0C\u5F00\u542F 3 \u5BB6 AI \u51B3\u7B56\u65E5\u5FD7`);
+      for (const p of players) {
+        if (p.aiPlayer?.strategy) p.aiPlayer.strategy._quiet = false;
+      }
+    }
+    ui.clearLog();
+    ui.clearLastPlays();
+    const lp = replayLastPlays(rec, forkStep);
+    for (const p of [0, 1, 2, 3]) {
+      if (lp[p]) ui.updateLastPlay(p, lp[p]);
+    }
+    ui.updateHand(game.hands[humanSeat]);
+    ui.updatePlayerCounts(game.playerCounts, game.hands);
+    ui.setHighlightSeat(humanSeat);
+    ui.setTurnInfo(`\u8BD5\u6253\u4E2D\uFF08\u63A5\u7BA1 ${POS_NAMES[humanSeat]}\uFF09...`);
+    const onDealOver = (data) => {
+      const { html, title } = buildDealOverHtml(data, 1, false, ui);
+      const fullHtml = html + '<div class="modal-actions"><button id="btn-return-replay" class="btn-new-game">\u8FD4\u56DE\u539F\u59CB\u590D\u76D8</button></div>';
+      ui.showDealOver(fullHtml, title);
+      const btn = document.getElementById("btn-return-replay");
+      if (btn) btn.onclick = () => {
+        document.getElementById("deal-over-modal").classList.add("hidden");
+        if (tryplayDealOverHandler) {
+          eventBus.off("deal_over", tryplayDealOverHandler);
+          tryplayDealOverHandler = null;
+        }
+        returnToReplay();
+      };
+    };
+    tryplayDealOverHandler = onDealOver;
+    eventBus.on("deal_over", onDealOver);
+    try {
+      await playOneDeal(game, players, ui, null, humanSeat, { dealt: true });
+    } finally {
+      if (tryplayDealOverHandler === onDealOver) tryplayDealOverHandler = null;
+      eventBus.off("deal_over", onDealOver);
+    }
   }
   guandanTheme.init();
   subscribeEvents();
