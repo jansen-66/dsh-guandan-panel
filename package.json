@@ -1,6 +1,6 @@
 {
   "name": "dsh-guandan",
-  "version": "0.1.9",
+  "version": "0.2.0",
   "description": "DSH Web Plugin: 工作区底部开辟一个迷你面板，当AI帮你工作时，不要荒废大脑，来一把掼蛋游戏。",
   "type": "module",
   "main": "./lib/index.js",

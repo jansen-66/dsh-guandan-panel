@@ -6011,24 +6011,50 @@
           return;
         }
         const cfg = [
-          { cls: "corner-tl", pos: 3, label: "\u4E0A\u5BB6" },
-          // 左上
-          { cls: "corner-bl", pos: 0, label: "\u81EA\u5DF1" },
-          // 左下
-          { cls: "corner-br", pos: 1, label: "\u4E0B\u5BB6" },
-          // 右下
-          { cls: "corner-tr", pos: 2, label: "\u961F\u53CB" }
-          // 右上
+          { cls: "corner-left", pos: 3, label: "\u4E0A\u5BB6" },
+          // 左（竖列）
+          { cls: "corner-right", pos: 1, label: "\u4E0B\u5BB6" },
+          // 右（竖列）
+          { cls: "corner-bottom", pos: 0, label: "\u81EA\u5DF1" },
+          // 下（横行）
+          { cls: "corner-top", pos: 2, label: "\u961F\u53CB" }
+          // 上（横行）
         ];
         corners.innerHTML = cfg.map(({ cls, pos }) => {
           const hand = hands[pos] || [];
           const cardsHtml = hand.length ? hand.map((c) => this._renderCardMini(c)).join("") : '<span class="corner-empty">\u5DF2\u51FA\u5B8C</span>';
           return `<div class="table-corner ${cls}"><div class="corner-cards">${cardsHtml}</div></div>`;
         }).join("");
+        this._fitCornerOverlap(corners);
       } else {
         if (this._el.tableCorners) this._el.tableCorners.innerHTML = "";
         this._renderHandsStrip(hands);
       }
+    }
+    /**
+     * 四角手牌间距自适应：写入 --corner-advance（相邻两牌的露出间距，16~23px）。
+     * 默认 16px 为最大重叠；边上空间富余时增大到最多 23px（牌宽 22 + 1px gap，完全不叠）；
+     * 空间不足则保持 16px，超出部分由 .table-corner 的 overflow 截断。
+     */
+    _fitCornerOverlap(corners) {
+      const CARD_LEN = 22;
+      const MIN_ADVANCE = 16;
+      const MAX_ADVANCE = CARD_LEN + 1;
+      corners.querySelectorAll(".table-corner").forEach((corner) => {
+        const cards = corner.querySelector(".corner-cards");
+        if (!cards) return;
+        const n = cards.querySelectorAll(".card-mini").length;
+        if (n < 2) {
+          cards.style.setProperty("--corner-advance", MAX_ADVANCE + "px");
+          return;
+        }
+        const vertical = corner.classList.contains("corner-left") || corner.classList.contains("corner-right");
+        const box = corner.getBoundingClientRect();
+        const avail = (vertical ? box.height - 80 : box.width) - 8;
+        const raw = (avail - CARD_LEN) / (n - 1);
+        const advance = Math.min(MAX_ADVANCE, Math.max(MIN_ADVANCE, Math.round(raw * 10) / 10));
+        cards.style.setProperty("--corner-advance", advance + "px");
+      });
     }
     /** 游戏栏上方区块：四家手牌各一行（自上而下：上家 → 队友 → 下家 → 自己，自己紧贴游戏栏） */
     _renderHandsStrip(hands) {
@@ -6136,7 +6162,7 @@
       this._replayStep = step;
       const names = POS_NAMES;
       const cur = game2.gameState === "idle" ? "\u672C\u526F\u7ED3\u675F" : `\u8F6E\u5230 ${names[game2.currentTurn]}`;
-      this.setTurnInfo(`\u590D\u76D8 ${step}/${total} \xB7 ${cur}`);
+      this.setTurnInfo(`${step}/${total} ${cur}`);
       if (this._el.replayHandLabel) this._el.replayHandLabel.textContent = names[dispPlayer];
       if (this._el.replayHandCards) {
         const hand = game2.hands[dispPlayer] || [];

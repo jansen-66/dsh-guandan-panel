@@ -846,7 +846,7 @@ body {
 /* 大牌桌（>500 四边显示手牌）时：玩家区/出牌区向中心收缩，
    边缘让给贴边手牌，避免重叠 */
 #table-panel:has(.table-corner) {
-  padding: 46px 36px 46px 36px;
+  padding: 42px;
 }
 
 /* 四角手牌（仅大牌桌 >500 时显示，JS 注入 .table-corner） */
@@ -863,35 +863,41 @@ body {
   background: rgba(0, 0, 0, .4);
   border: 1px solid rgba(255, 255, 255, .2);
   border-radius: 10px;
-  padding: 4px 6px;
+  /* 对称 padding：保证上下横条(牌高 30)与左右竖条(牌宽 30)厚度一致 */
+  padding: 3px;
   font-size: 12px;
   color: #fef3c7;
 }
-/* 队友（上边）/ 自己（下边）：仅一行，宽度铺满桌面边长 */
-.table-corner.corner-tr { top: 2px; left: 2px; right: 2px; }
-.table-corner.corner-bl { bottom: 2px; left: 2px; right: 2px; }
+/* 队友（上边）/ 自己（下边）：仅一行，宽度铺满桌面边长。
+   层叠顺序由 JS 的渲染顺序决定：先左右竖条，后上下横条（见 _renderTableCorners） */
+.table-corner.corner-top { top: 2px; left: 2px; right: 2px; }
+.table-corner.corner-bottom { bottom: 2px; left: 2px; right: 2px; }
 /* 上家（左边）/ 下家（右边）：仅一列，长度铺满桌面边长 */
-.table-corner.corner-tl { left: 2px; top: 2px; bottom: 2px; }
-.table-corner.corner-br { right: 2px; top: 2px; bottom: 2px; }
+.table-corner.corner-left { left: 2px; top: 2px; bottom: 2px; }
+.table-corner.corner-right { right: 2px; top: 2px; bottom: 2px; }
 /* 牌流方向：队友/自己 横向一行，上家/下家 纵向一列，均不换行、超出截断 */
-.table-corner.corner-tr,
-.table-corner.corner-bl {
+.table-corner.corner-top,
+.table-corner.corner-bottom {
   justify-content: center;   /* 让牌流在铺满的边上居中 */
 }
-.table-corner.corner-tr .corner-cards,
-.table-corner.corner-bl .corner-cards {
+.table-corner.corner-top .corner-cards,
+.table-corner.corner-bottom .corner-cards {
   flex-direction: row;
   flex-wrap: nowrap;
   justify-content: center;
   flex: 0 1 auto;
   max-width: 100%;
 }
-.table-corner.corner-tl .corner-cards,
-.table-corner.corner-br .corner-cards {
+.table-corner.corner-left .corner-cards,
+.table-corner.corner-right .corner-cards {
   flex-direction: column;
   flex-wrap: nowrap;
   justify-content: center;
   align-content: flex-start;
+  /* 纵向牌 rotate(90deg) 后视觉宽度 = 原高度 30px，需给足列宽否则被 overflow 裁掉左右；
+     同时牌需在列内居中（否则贴左，视觉左缘被裁、右缘留空） */
+  width: 30px;
+  align-items: center;
 }
 .table-corner .corner-cards {
   display: flex;
@@ -900,26 +906,29 @@ body {
   line-height: 1.2;
   align-content: flex-start;
 }
-/* 横向（队友/自己）：紧凑重叠 -7px */
-.table-corner.corner-tr .corner-cards .card-mini,
-.table-corner.corner-bl .corner-cards .card-mini {
-  margin-right: -7px;
+/* 牌步进 --corner-advance：相邻两张牌的露出间距，由 JS 按「边上可用长度 / 手牌数」写入。
+   取值 16~23px：16px = 默认最大重叠，23px = 牌宽 22 + 1px gap（完全不叠）。
+   空间不足时取 16px，超出部分由 .table-corner 的 overflow 截断。 */
+/* 横向（队友/自己）：相邻牌布局占位 = 牌宽 22 + gap 1 = 23，故 margin-right = advance - 23 */
+.table-corner.corner-top .corner-cards .card-mini,
+.table-corner.corner-bottom .corner-cards .card-mini {
+  margin-right: calc(var(--corner-advance, 16px) - 23px);
 }
-.table-corner.corner-tr .corner-cards .card-mini:last-child,
-.table-corner.corner-bl .corner-cards .card-mini:last-child { margin-right: 0; }
+.table-corner.corner-top .corner-cards .card-mini:last-child,
+.table-corner.corner-bottom .corner-cards .card-mini:last-child { margin-right: 0; }
 /* 纵向（上家/下家）：牌横放 = 横向牌旋转 90°，竖直叠放。
-   旋转后视觉高 22px、布局占位高 30px；-15px 使净占位 16px，
-   与横向（-7px）一致地露出 16px、相互重叠 6px。 */
-.table-corner.corner-tl .corner-cards .card-mini,
-.table-corner.corner-br .corner-cards .card-mini {
-  margin: 0 0 -15px 0;
+   transform 不改变布局盒，单个占位仍是 22x30，沿边方向布局占位 = 原高 30 + gap 1 = 31，
+   故 margin-bottom = advance - 31（advance 取默认 16 时为 -15px）。 */
+.table-corner.corner-left .corner-cards .card-mini,
+.table-corner.corner-right .corner-cards .card-mini {
+  margin: 0 0 calc(var(--corner-advance, 16px) - 31px) 0;
   transform: rotate(90deg);
 }
-.table-corner.corner-tl .corner-cards .card-mini:last-child,
-.table-corner.corner-br .corner-cards .card-mini:last-child { margin-bottom: 0; }
+.table-corner.corner-left .corner-cards .card-mini:last-child,
+.table-corner.corner-right .corner-cards .card-mini:last-child { margin-bottom: 0; }
 /* 上家（左边）/ 下家（右边）：牌方向一致，底部朝左 */
-.table-corner.corner-tl .corner-cards .card-mini { transform: rotate(90deg); }
-.table-corner.corner-br .corner-cards .card-mini { transform: rotate(90deg); }
+.table-corner.corner-left .corner-cards .card-mini { transform: rotate(90deg); }
+.table-corner.corner-right .corner-cards .card-mini { transform: rotate(90deg); }
 .table-corner .corner-empty { opacity: .6; font-size: 11px; }
 
 /* 各家最后出牌 */
