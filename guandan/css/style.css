@@ -874,8 +874,8 @@ body {
   font-size: 12px;
   color: #fef3c7;
 }
-.table-corner.corner-top { top: 2px; left: 2px; right: 2px; }
-.table-corner.corner-bottom { bottom: 2px; left: 2px; right: 2px; }
+.table-corner.corner-top { top: 2px; left: 2px; right: 2px; min-height: 38px; }
+.table-corner.corner-bottom { bottom: 2px; left: 2px; right: 2px; min-height: 38px; }
 .table-corner.corner-left { left: 2px; top: 42px; bottom: 42px; }
 .table-corner.corner-right { right: 2px; top: 42px; bottom: 42px; }
 /* 上下横条：牌流横向排列，居中 */
@@ -890,7 +890,7 @@ body {
   flex-wrap: nowrap;
   justify-content: center;
   align-items: center;
-  gap: 3px;  /* 组间间距 */
+  gap: var(--group-gap, 3px);  /* 组间间距，JS 动态调整 */
   overflow: hidden;
 }
 /* 左右竖条：牌流纵向排列（从上到下），整体上下居中 */
@@ -941,7 +941,7 @@ body {
 .table-corner.corner-right .corner-cards .corner-group {
   margin-bottom: var(--group-margin, 3px);
 }
-.table-corner .corner-empty { opacity: .6; font-size: 11px; }
+.table-corner .corner-empty { opacity: .6; font-size: 11px; text-align: center; display: block; align-self: center; }
 
 /* 各家最后出牌 */
 .last-play-area {

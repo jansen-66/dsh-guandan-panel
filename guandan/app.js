@@ -994,7 +994,9 @@
         }
       }
       for (const flush of findAllFlushes(hand)) {
-        candidates.push({ type: "FLUSH_STRAIGHT", cards: flush.cards, main_value: flush.main_value, card_count: 5, is_bomb: true });
+        if (flush.main_value > lastValue) {
+          candidates.push({ type: "FLUSH_STRAIGHT", cards: flush.cards, main_value: flush.main_value, card_count: 5, is_bomb: true });
+        }
       }
       for (const fk of findAllFourJokers(hand)) {
         candidates.push({ type: "FOUR_JOKERS", cards: fk.cards, main_value: fk.main_value, card_count: 4, is_bomb: true });
@@ -2132,6 +2134,7 @@
         if (!this._quiet) console.log(`[CACHE] [${this.position}#] REBUILD: ${candidates.length} candidates`);
         this._printCandidates(candidates, myHand.length, myHand);
       }
+      this._outsideByLevelValue = null;
       if (!myLastPlay) {
         if (this._twoPlayer.isTwoPlayerMode()) {
           const nonBombCandidates = this._groupsCache.candidates.filter((c) => c.type !== "BOMB" && c.type !== "FLUSH_STRAIGHT");
@@ -2155,7 +2158,7 @@
           if (result) return result;
         }
         const lastPlayCount = lastPlay.cards.length;
-        const nextPlayerCount = this.tracker.getPlayerCount((this.position + 1) % 4);
+        const nextPlayerCount = this.tracker?.getPlayerCount((this.position + 1) % 4) || 0;
         const teammateLeft = this.tracker?.getPlayerCount((this.position + 2) % 4) || 0;
         if (myIsTeammate && teammateLeft > 0 && nextPlayerCount !== lastPlayCount) {
           if (this._lastPlayContainsBigCards(lastPlay) || this.tracker && this._isLastPlayMaxOutside(myLastPlay, myHand) >= 1) {
@@ -2597,16 +2600,8 @@
         } else {
           for (const cand of candidates) {
             const candType = (cand.type || "SINGLE").toUpperCase();
-            if (candType === "FOUR_JOKERS") {
+            if (candType === "FOUR_JOKERS" || candType === "BOMB" || candType === "FLUSH_STRAIGHT") {
               beatCandidates.push(cand);
-              continue;
-            }
-            if (candType === "BOMB" || candType === "FLUSH_STRAIGHT") {
-              if (!beatCandidates.some((bc) => bc.type === candType && bc.cards.some(
-                (bcCard, i) => bcCard.value === cand.cards[i].value && bcCard.suit === cand.cards[i].suit
-              ))) {
-                beatCandidates.push(cand);
-              }
             }
           }
         }
@@ -3045,6 +3040,9 @@
       };
       const sorted = [...cards].sort((a, b) => getValue(a) - getValue(b));
       const minSortVal = getValue(sorted[0]);
+      const lcv = this.tracker?.levelCardValue || 2;
+      const mine = (v) => v === lcv ? myHandCount[15] || 0 : myHandCount[v] || 0;
+      const outsideAt = (v) => (this.tracker.remaining[v] || 0) - mine(v);
       if (groupLength === 5 && minSortVal === 10) return 1;
       if (groupLength === 3 && minSortVal === 12) return 1;
       if (groupLength === 2 && minSortVal === 13) return 1;
@@ -3053,13 +3051,11 @@
         let canForm = true;
         for (let i = 0; i < groupLength; i++) {
           let needed = start + i;
-          if (needed === 1) needed = 14;
-          else if (needed === 2) needed = 2;
-          else if (needed > maxStart) {
+          if (needed > 14) {
             canForm = false;
             break;
           }
-          if (this.tracker.remaining[needed] - myHandCount[needed] < groupCount) {
+          if (outsideAt(needed) < groupCount) {
             canForm = false;
             break;
           }
@@ -3073,7 +3069,7 @@
       let w = 0;
       let outsideStart = -1;
       for (let v = 14; v >= 1; v--) {
-        if ((this.tracker.remaining[v] || 0) - (myHandCount[v] || 0) >= requiredPerGroup) {
+        if (outsideAt(v) >= requiredPerGroup) {
           w++;
         } else {
           w = 0;
@@ -3088,11 +3084,11 @@
         let canForm = true;
         for (let i = 0; i < groupLength; i++) {
           let needed = start + i;
-          if (needed > maxStart) {
+          if (needed > 14) {
             canForm = false;
             break;
           }
-          if ((myHandCount[needed] || 0) < requiredPerGroup) {
+          if (mine(needed) < requiredPerGroup) {
             canForm = false;
             break;
           }
@@ -5523,7 +5519,7 @@
       return null;
     }
     get aiDelay() {
-      return this.testActive ? 0 : 1200;
+      return this.testActive ? 0 : 1e3;
     }
     /** 更新测试模式状态并同步过牌按钮文案 */
     setTestMode(mode) {
@@ -6096,12 +6092,29 @@
           totalOverlapSlots += Math.max(0, nCards - 1);
         });
         if (isHorizontal) {
-          const totalGroupGap = (n - 1) * MIN_GROUP_GAP;
-          const avail = box.width - 6 - totalGroupGap;
-          if (totalOverlapSlots === 0) return;
-          const overlap = (avail - totalCardsWidth) / totalOverlapSlots;
-          const groupOverlap = Math.round(Math.max(-18, Math.min(-3, overlap)) * 10) / 10;
-          cards.style.setProperty("--group-overlap", groupOverlap + "px");
+          const MAX_GROUP_GAP = 12;
+          let groupGap = MIN_GROUP_GAP;
+          let avail = box.width - 6 - (n - 1) * groupGap;
+          let groupOverlap;
+          if (totalOverlapSlots === 0) {
+            const totalCardsW = Array.from(groups).reduce((sum, g) => sum + g.querySelectorAll(".card-mini").length * CARD_LEN, 0);
+            const extra = box.width - 6 - totalCardsW;
+            groupGap = Math.round(Math.max(MIN_GROUP_GAP, Math.min(MAX_GROUP_GAP, extra / Math.max(1, n - 1))) * 10) / 10;
+            cards.style.setProperty("--group-overlap", "0px");
+            cards.style.setProperty("--group-gap", groupGap + "px");
+          } else {
+            groupOverlap = (avail - totalCardsWidth) / totalOverlapSlots;
+            groupOverlap = Math.round(Math.max(-18, Math.min(-4.4, groupOverlap)) * 10) / 10;
+            if (groupOverlap >= -4.4) {
+              const usedForOverlap = totalOverlapSlots * -4.4;
+              const totalUsed = totalCardsWidth - usedForOverlap;
+              const extraForGap = avail - totalUsed;
+              const gapIncrease = extraForGap / (n - 1);
+              groupGap = Math.round(Math.max(MIN_GROUP_GAP, Math.min(MAX_GROUP_GAP, MIN_GROUP_GAP + gapIncrease)) * 10) / 10;
+            }
+            cards.style.setProperty("--group-overlap", groupOverlap + "px");
+            cards.style.setProperty("--group-gap", groupGap + "px");
+          }
         } else {
           let totalHeight = 0;
           groups.forEach((g) => {
@@ -6206,7 +6219,7 @@
         corners.innerHTML = cfg.map(({ cls, pos }) => {
           const hand = hands[pos] || [];
           const cardsHtml = hand.length ? this._renderCornerGroupCards(hand) : "";
-          return `<div class="table-corner ${cls}">` + (cardsHtml ? `<div class="corner-cards">${cardsHtml}</div>` : '<span class="corner-empty">\u5DF2\u51FA\u5B8C</span>') + `</div>`;
+          return `<div class="table-corner ${cls}">` + (cardsHtml ? `<div class="corner-cards">${cardsHtml}</div>` : '<span class="corner-empty">\u51FA\u5B8C</span>') + `</div>`;
         }).join("");
         this._fitCornerLayout(corners);
       } else {
