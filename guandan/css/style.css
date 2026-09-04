@@ -42,7 +42,6 @@
 #my-hand,
 #replay-hand-cards,
 #candidate-list,
-.table-overlay.replay-mode #candidate-list,
 .modal-box,
 .log-content {
   scrollbar-width: none;            /* Firefox */
@@ -51,7 +50,6 @@
 #my-hand::-webkit-scrollbar,
 #replay-hand-cards::-webkit-scrollbar,
 #candidate-list::-webkit-scrollbar,
-.table-overlay.replay-mode #candidate-list::-webkit-scrollbar,
 .modal-box::-webkit-scrollbar,
 .log-content::-webkit-scrollbar {
   display: none;                    /* WebKit/Blink */
@@ -198,12 +196,14 @@ body {
 .hand-strip-cards {
   flex: 1 1 auto;
   display: flex;
-  flex-wrap: wrap;
-  gap: 1px;
+  flex-wrap: nowrap;
+  gap: 6px;  /* 组间间距 */
   min-width: 0;
+  align-items: center;
 }
-.hand-strip-cards .card-mini { margin-right: -4px; }  /* 紧凑 */
+.hand-strip-cards .card-mini { margin-right: -4px; }  /* 组内紧凑重叠 */
 .hand-strip-cards .card-mini:last-child { margin-right: 0; }
+.hand-strip-cards .corner-group { margin-right: 0; }
 
 /* ============ 底部游戏栏 ============ */
 #game-bar {
@@ -802,6 +802,13 @@ body {
   min-width: 90px;
   min-height: 120px;   /* 背景高度与中央出牌区按钮一致 */
 }
+/* 复盘模式：上家靠右对齐，下家靠左对齐（需同时显示 table-corner） */
+#table-overlay.replay-mode:has(.table-corner) #pos-left {
+  align-items: flex-end;
+}
+#table-overlay.replay-mode:has(.table-corner) #pos-right {
+  align-items: flex-start;
+}
 /* 牌桌中央 */
 #play-area {
   flex: 1 1 auto;
@@ -843,13 +850,13 @@ body {
   padding: 8px 14px;
 }
 
-/* 大牌桌（>500 四边显示手牌）时：玩家区/出牌区向中心收缩，
+/* 大牌桌（>400 四边显示手牌）时：玩家区/出牌区向中心收缩，
    边缘让给贴边手牌，避免重叠 */
 #table-panel:has(.table-corner) {
   padding: 42px;
 }
 
-/* 四角手牌（仅大牌桌 >500 时显示，JS 注入 .table-corner） */
+/* 四角手牌（仅大牌桌 >400 时显示，JS 注入 .table-corner） */
 #table-corners {
   position: absolute;
   inset: 0;
@@ -863,72 +870,77 @@ body {
   background: rgba(0, 0, 0, .4);
   border: 1px solid rgba(255, 255, 255, .2);
   border-radius: 10px;
-  /* 对称 padding：保证上下横条(牌高 30)与左右竖条(牌宽 30)厚度一致 */
   padding: 3px;
   font-size: 12px;
   color: #fef3c7;
 }
-/* 队友（上边）/ 自己（下边）：仅一行，宽度铺满桌面边长。
-   层叠顺序由 JS 的渲染顺序决定：先左右竖条，后上下横条（见 _renderTableCorners） */
 .table-corner.corner-top { top: 2px; left: 2px; right: 2px; }
 .table-corner.corner-bottom { bottom: 2px; left: 2px; right: 2px; }
-/* 上家（左边）/ 下家（右边）：仅一列，长度铺满桌面边长 */
-.table-corner.corner-left { left: 2px; top: 2px; bottom: 2px; }
-.table-corner.corner-right { right: 2px; top: 2px; bottom: 2px; }
-/* 牌流方向：队友/自己 横向一行，上家/下家 纵向一列，均不换行、超出截断 */
+.table-corner.corner-left { left: 2px; top: 42px; bottom: 42px; }
+.table-corner.corner-right { right: 2px; top: 42px; bottom: 42px; }
+/* 上下横条：牌流横向排列，居中 */
 .table-corner.corner-top,
 .table-corner.corner-bottom {
-  justify-content: center;   /* 让牌流在铺满的边上居中 */
+  justify-content: center;
 }
 .table-corner.corner-top .corner-cards,
 .table-corner.corner-bottom .corner-cards {
+  display: flex;
   flex-direction: row;
   flex-wrap: nowrap;
   justify-content: center;
-  flex: 0 1 auto;
-  max-width: 100%;
-}
-.table-corner.corner-left .corner-cards,
-.table-corner.corner-right .corner-cards {
-  flex-direction: column;
-  flex-wrap: nowrap;
-  justify-content: center;
-  align-content: flex-start;
-  /* 纵向牌 rotate(90deg) 后视觉宽度 = 原高度 30px，需给足列宽否则被 overflow 裁掉左右；
-     同时牌需在列内居中（否则贴左，视觉左缘被裁、右缘留空） */
-  width: 30px;
   align-items: center;
-}
-.table-corner .corner-cards {
-  display: flex;
-  gap: 1px;
+  gap: 3px;  /* 组间间距 */
   overflow: hidden;
-  line-height: 1.2;
-  align-content: flex-start;
 }
-/* 牌步进 --corner-advance：相邻两张牌的露出间距，由 JS 按「边上可用长度 / 手牌数」写入。
-   取值 16~23px：16px = 默认最大重叠，23px = 牌宽 22 + 1px gap（完全不叠）。
-   空间不足时取 16px，超出部分由 .table-corner 的 overflow 截断。 */
-/* 横向（队友/自己）：相邻牌布局占位 = 牌宽 22 + gap 1 = 23，故 margin-right = advance - 23 */
-.table-corner.corner-top .corner-cards .card-mini,
-.table-corner.corner-bottom .corner-cards .card-mini {
-  margin-right: calc(var(--corner-advance, 16px) - 23px);
+/* 左右竖条：牌流纵向排列（从上到下），整体上下居中 */
+.table-corner.corner-left .corner-cards {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;  /* 左对齐 */
+  justify-content: center;
+  gap: 0;
+  overflow: hidden;
 }
-.table-corner.corner-top .corner-cards .card-mini:last-child,
-.table-corner.corner-bottom .corner-cards .card-mini:last-child { margin-right: 0; }
-/* 纵向（上家/下家）：牌横放 = 横向牌旋转 90°，竖直叠放。
-   transform 不改变布局盒，单个占位仍是 22x30，沿边方向布局占位 = 原高 30 + gap 1 = 31，
-   故 margin-bottom = advance - 31（advance 取默认 16 时为 -15px）。 */
-.table-corner.corner-left .corner-cards .card-mini,
-.table-corner.corner-right .corner-cards .card-mini {
-  margin: 0 0 calc(var(--corner-advance, 16px) - 31px) 0;
-  transform: rotate(90deg);
+.table-corner.corner-right .corner-cards {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;  /* 右对齐 */
+  justify-content: center;
+  gap: 0;
+  overflow: hidden;
 }
-.table-corner.corner-left .corner-cards .card-mini:last-child,
-.table-corner.corner-right .corner-cards .card-mini:last-child { margin-bottom: 0; }
-/* 上家（左边）/ 下家（右边）：牌方向一致，底部朝左 */
-.table-corner.corner-left .corner-cards .card-mini { transform: rotate(90deg); }
-.table-corner.corner-right .corner-cards .card-mini { transform: rotate(90deg); }
+/* 分组容器 */
+.corner-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+}
+/* 同组牌左右叠放（与手牌横排一致）*/
+/* 上下横条：重叠量由 JS 动态写入 --group-overlap */
+.table-corner.corner-top .corner-cards .corner-group .card-mini,
+.table-corner.corner-bottom .corner-cards .corner-group .card-mini {
+  margin-left: var(--group-overlap, 0);
+}
+/* 左右竖条：组内固定重叠 */
+.table-corner.corner-left .corner-cards .corner-group .card-mini,
+.table-corner.corner-right .corner-cards .corner-group .card-mini {
+  margin-left: -4.4px;
+}
+.table-corner.corner-top .corner-cards .corner-group .card-mini:first-child,
+.table-corner.corner-bottom .corner-cards .corner-group .card-mini:first-child {
+  margin-left: 0;
+}
+.table-corner.corner-left .corner-cards .corner-group .card-mini:first-child,
+.table-corner.corner-right .corner-cards .corner-group .card-mini:first-child {
+  margin-left: 0;
+}
+/* 横条：组间通过 gap 控制间距 */
+/* 竖条：组间间距用 margin-bottom，支持负数 */
+.table-corner.corner-left .corner-cards .corner-group,
+.table-corner.corner-right .corner-cards .corner-group {
+  margin-bottom: var(--group-margin, 3px);
+}
 .table-corner .corner-empty { opacity: .6; font-size: 11px; }
 
 /* 各家最后出牌 */
@@ -941,6 +953,8 @@ body {
   min-width: 56px;      /* 空出牌区也保留可见宽度（左右侧区域最窄 90px） */
   padding: 2px;
   max-width: 100%;
+  position: relative;
+  z-index: 3;           /* 高于四角手牌(z-index:2) */
 }
 .last-play-area:empty { min-height: 0; }
 /* 自己和队友的出牌区：最小高度 60，牌多时自动增高；横向排布，最小宽度放宽 */
@@ -1139,20 +1153,6 @@ body {
   font-weight: 600;
   color: var(--accent-2);
   white-space: nowrap;
-}
-
-/* 复盘模式：左栏显示所有步骤（复用组牌列表样式），牌桌座位保留并随回放步同步出牌信息 */
-.table-overlay.replay-mode #candidate-panel {
-  display: flex;
-  /* 步骤多时限制面板高度，让列表在框内滚动，不超出屏幕 */
-  max-height: calc(100dvh - 96px - 24px);
-}
-.table-overlay.replay-mode #candidate-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  overflow-y: auto;   /* 明确纵向滚动 */
-  min-height: 0;
 }
 
 /* 单家手牌（游戏栏内、回放按钮上方；点击手牌切换显示玩家） */

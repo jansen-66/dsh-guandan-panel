@@ -1269,6 +1269,7 @@
       if (!t || !t.playerCounts) return false;
       const alive = t.playerCounts.filter((c) => c > 0);
       if (alive.length === 2) return true;
+      return false;
       const myHand = this.p._lastHand || [];
       if (myHand.length > 10) return false;
       const outsideTotal = t.playerCounts.reduce((s, c) => s + c, 0);
@@ -1304,18 +1305,6 @@
       return { countMap, cards };
     }
     // ===== 对手压牌模拟 =====
-    /**
-     * 模拟对手的最优压牌选择：直接从原始手牌在线生成可压牌型，选最小代价
-     */
-    async _simulateOpponentBeat(hand, lastType, lastMv) {
-      const beatCands = await this._analyzer.generateCandidates(hand, {
-        type: lastType,
-        main_value: lastMv
-      });
-      if (!beatCands || beatCands.length === 0) return null;
-      beatCands.sort((a, b) => (a.main_value || 0) - (b.main_value || 0));
-      return beatCands[0];
-    }
     // ===== A/B/C 循环模拟 =====
     /**
      * 模拟一条完整的博弈路径，直到己方清牌（成功）或接不上（失败）。
@@ -1351,6 +1340,41 @@
         if (myHandCopy.length === 0) return path;
         lastPlay = chosen;
       }
+      const allOppBeat = await this._analyzer.generateCandidates(oppHandCopy, {
+        type: lastPlay.type,
+        main_value: lastPlay.main_value
+      });
+      if (!allOppBeat || allOppBeat.length === 0) {
+        return await this._simulateLoop(myHandCopy, oppHandCopy, path, null);
+      }
+      for (const oppBeat of allOppBeat) {
+        let oppCopy = [...oppHandCopy];
+        oppCopy = this._analyzer.applyPlay(oppCopy, oppBeat.cards);
+        if (oppCopy.length === 0) return null;
+        path.push({ who: "\u56DE", type: oppBeat.type, cards: oppBeat.cards.map((c) => c.display).join("") });
+        const result = await this._simulateLoop(myHandCopy, oppCopy, path, oppBeat);
+        if (!result) return null;
+      }
+      return path;
+    }
+    /**
+     * while 循环模拟：A → B → (C → B → C → ...)
+     * 对手每次只选最小代价的压牌。
+     */
+    async _simulateLoop(myHand, oppHand, path, lastPlay) {
+      let myHandCopy = [...myHand];
+      let oppHandCopy = [...oppHand];
+      if (lastPlay) {
+        const myCands = await this._buildFromHand(myHandCopy);
+        const valid = this._filterBeat(myCands, lastPlay, false);
+        if (valid.length === 0) return null;
+        valid.sort((a, b) => (a.main_value || 0) - (b.main_value || 0));
+        const chosen = valid[0];
+        myHandCopy = this._analyzer.applyPlay(myHandCopy, chosen.cards);
+        path.push({ who: "\u51FA", type: chosen.type, cards: chosen.cards.map((c) => c.display).join("") });
+        if (myHandCopy.length === 0) return path;
+        lastPlay = chosen;
+      }
       while (true) {
         if (!lastPlay) {
           const myAllCands = await this._buildFromHand(myHandCopy);
@@ -1363,14 +1387,19 @@
           lastPlay = chosen2;
           continue;
         }
-        const oppBeat = await this._simulateOpponentBeat(oppHandCopy, lastPlay.type, lastPlay.main_value);
-        if (!oppBeat) {
+        const beatCands = await this._analyzer.generateCandidates(oppHandCopy, {
+          type: lastPlay.type,
+          main_value: lastPlay.main_value
+        });
+        if (!beatCands || beatCands.length === 0) {
           lastPlay = null;
           continue;
         }
+        beatCands.sort((a, b) => (a.main_value || 0) - (b.main_value || 0));
+        const oppBeat = beatCands[0];
         oppHandCopy = this._analyzer.applyPlay(oppHandCopy, oppBeat.cards);
-        path.push({ who: "\u56DE", type: oppBeat.type, cards: oppBeat.cards.map((c) => c.display).join("") });
         if (oppHandCopy.length === 0) return null;
+        path.push({ who: "\u56DE", type: oppBeat.type, cards: oppBeat.cards.map((c) => c.display).join("") });
         lastPlay = oppBeat;
         const myCands = await this._buildFromHand(myHandCopy);
         const valid = this._filterBeat(myCands, lastPlay, false);
@@ -2309,7 +2338,7 @@
           else if (val === 3) bombList.push(c);
           else nonMaxList.push(c);
         }
-        if (this.position == 10 && nonMaxList.length > 0) {
+        if (!this._quiet && nonMaxList.length > 0) {
           const cardsStr = nonMaxList.map((c) => c.cards.map((card) => this._formatCard(card)).join(" ")).join(" | ");
           console.log(`[NONMAX] [${this.position}#] ${cardsStr}`);
         }
@@ -2417,6 +2446,19 @@
           safe.unshift(toMove);
           if (!this._quiet) console.log(`[STRATEGY] \u961F${teammateCount}-${safe.length}: ${safe.map((c) => c.cards.map((card) => card.display).join("")).join(", ")}`);
         }
+      }
+      if (safe.length > 1) {
+        const group2 = [], group1 = [], group0 = [];
+        for (const c of safe) {
+          const ismax = this._isMaxOutside(c, this._lastHand);
+          if (ismax === 2) group2.push(c);
+          else if (ismax === 1) group1.push(c);
+          else group0.push(c);
+        }
+        const merged = [...group2, ...group0, ...group1];
+        if (!this._quiet) console.log(`[STRATEGY] \u6392\u5E8F-${merged.length}: ${merged.map((c) => c.cards.map((card) => card.display).join("")).join(", ")}`);
+        safe.length = 0;
+        safe.push(...merged);
       }
       return safe.length > 0 ? safe : fallback;
     }
@@ -4829,9 +4871,9 @@
   function getStageBonus(handSize) {
     if (handSize >= 20) return -5;
     if (handSize >= 15) return -3;
-    if (handSize >= 10) return -1;
-    if (handSize >= 5) return 1;
-    return 3;
+    if (handSize >= 10) return -2;
+    if (handSize >= 5) return -1;
+    return 0;
   }
   function calcScore(cand, handSize = 20) {
     const type = (cand.type || "").toUpperCase();
@@ -4900,6 +4942,66 @@
 
   // guandan/js/game-loop.js
   var sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  async function humanTurn(game2, players2, ui2, currentTurn, mpConfig, turnInfo) {
+    const player = players2[currentTurn];
+    const hand = game2.hands[currentTurn];
+    const lastPlay = game2.lastPlay;
+    const decision = await player.aiPlayer.decide(hand, lastPlay, game2.playHistory);
+    const candidates = player.aiPlayer.strategy._groupsCache?.candidates || [];
+    ui2.showMyTurn(hand, lastPlay, decision, candidates, game2.cardTracker, game2.playAnalyzer, turnInfo);
+    let userAction;
+    if (ui2.testActive) {
+      userAction = decision.action === "play" && decision.cards && decision.cards.length > 0 ? { action: "play", cards: decision.cards } : { action: "pass" };
+    } else {
+      userAction = await waitUserWithTimeout(ui2, decision, mpConfig);
+    }
+    if (userAction.action === "play") {
+      let playedCards = userAction.cards;
+      let result = game2.playCards(currentTurn, playedCards);
+      if (!result.success) {
+        while (!result.success) {
+          ui2.showToast(`\u51FA\u724C\u5931\u8D25: ${result.reason}`);
+          const newDecision = await player.aiPlayer.decide(game2.hands[currentTurn], game2.lastPlay);
+          const newCands = player.aiPlayer.strategy._groupsCache?.candidates || [];
+          ui2.showMyTurn(game2.hands[currentTurn], game2.lastPlay, newDecision, newCands, game2.cardTracker, game2.playAnalyzer, turnInfo);
+          const retryAction = await waitUserWithTimeout(ui2, newDecision, mpConfig);
+          if (retryAction.action === "play") {
+            playedCards = retryAction.cards;
+            result = game2.playCards(currentTurn, playedCards);
+            if (result.success) {
+              player.aiPlayer.strategy.updateCacheAfterPlay(game2.hands[currentTurn], playedCards);
+              game2.cardTracker.cardsOut(playedCards, currentTurn);
+              game2.cardTracker.updateKingAfterPlay(
+                { type: "play", cards: playedCards },
+                currentTurn,
+                null,
+                ""
+              );
+              ui2.updateHand(game2.hands[currentTurn]);
+              return { action: "play", cards: playedCards };
+            }
+          } else {
+            game2.passCards(currentTurn);
+            return { action: "pass" };
+          }
+        }
+      } else {
+        player.aiPlayer.strategy.updateCacheAfterPlay(game2.hands[currentTurn], userAction.cards);
+        game2.cardTracker.cardsOut(userAction.cards, currentTurn);
+        game2.cardTracker.updateKingAfterPlay(
+          { type: "play", cards: userAction.cards },
+          currentTurn,
+          null,
+          ""
+        );
+        ui2.updateHand(game2.hands[currentTurn]);
+        return { action: "play", cards: userAction.cards };
+      }
+    } else {
+      game2.passCards(currentTurn);
+      return { action: "pass" };
+    }
+  }
   function waitUserWithTimeout(ui2, decision, mpConfig) {
     if (!mpConfig || !mpConfig.autoPlayEnabled) {
       return ui2.waitUserAction();
@@ -4952,6 +5054,7 @@
       ui2.clearLastPlays();
     }
     game2.cardTracker.initKingFromHand(game2.hands[0]);
+    const isTryplay = !!opts.tryplay;
     let loopCount = 0;
     const maxLoops = 500;
     while (game2.gameState === "playing" && loopCount < maxLoops) {
@@ -4961,75 +5064,26 @@
       const posName = POS_NAMES[currentTurn];
       const isRemote = mpConfig && mpConfig.localDivision[currentTurn] === "remote";
       ui2.setHighlightSeat(currentTurn);
-      if (currentTurn === humanSeat) {
-        ui2.setTurnInfo("\u8F6E\u5230\u4F60\u51FA\u724C");
-        ui2.updateHand(game2.hands[humanSeat]);
-        const hand = game2.hands[humanSeat];
-        const lastPlay = game2.lastPlay;
-        const decision = await player.aiPlayer.decide(hand, lastPlay, game2.playHistory);
-        const candidates = player.aiPlayer.strategy._groupsCache?.candidates || [];
-        ui2.showMyTurn(hand, lastPlay, decision, candidates, game2.cardTracker, game2.playAnalyzer);
-        let userAction;
-        if (ui2.testActive) {
-          userAction = decision.action === "play" && decision.cards && decision.cards.length > 0 ? { action: "play", cards: decision.cards } : { action: "pass" };
-        } else {
-          userAction = await waitUserWithTimeout(ui2, decision, mpConfig);
+      if (isTryplay) {
+        ui2.setTurnInfo(`${posName} \u8BD5\u6253\u51FA\u724C`);
+        const result = await humanTurn(game2, players2, ui2, currentTurn, mpConfig, `${posName} \u8BD5\u6253\u51FA\u724C`);
+        if (result.action === "play") {
+          player.aiPlayer.strategy.updateCacheAfterPlay(game2.hands[currentTurn], result.cards);
         }
+      } else if (currentTurn === humanSeat) {
+        const result = await humanTurn(game2, players2, ui2, currentTurn, mpConfig);
         let finalSend = null;
-        if (userAction.action === "play") {
-          let playedCards = userAction.cards;
-          let result = game2.playCards(humanSeat, playedCards);
-          if (!result.success) {
-            while (!result.success) {
-              ui2.showToast(`\u51FA\u724C\u5931\u8D25: ${result.reason}`);
-              const newDecision = await player.aiPlayer.decide(game2.hands[humanSeat], game2.lastPlay);
-              const newCands = player.aiPlayer.strategy._groupsCache?.candidates || [];
-              ui2.showMyTurn(game2.hands[humanSeat], game2.lastPlay, newDecision, newCands, game2.cardTracker, game2.playAnalyzer);
-              const retryAction = await waitUserWithTimeout(ui2, newDecision, mpConfig);
-              if (retryAction.action === "play") {
-                playedCards = retryAction.cards;
-                result = game2.playCards(humanSeat, playedCards);
-                if (result.success) {
-                  player.aiPlayer.strategy.updateCacheAfterPlay(game2.hands[humanSeat], playedCards);
-                  game2.cardTracker.cardsOut(playedCards, humanSeat);
-                  game2.cardTracker.updateKingAfterPlay(
-                    { type: "play", cards: playedCards },
-                    humanSeat,
-                    null,
-                    ""
-                  );
-                  ui2.updateHand(game2.hands[humanSeat]);
-                  finalSend = { type: "PLAY_ACTION", cards: playedCards, playType: result.type };
-                  break;
-                }
-              } else {
-                game2.passCards(humanSeat);
-                finalSend = { type: "PASS_ACTION" };
-                break;
-              }
-            }
-          } else {
-            player.aiPlayer.strategy.updateCacheAfterPlay(game2.hands[humanSeat], userAction.cards);
-            game2.cardTracker.cardsOut(userAction.cards, humanSeat);
-            game2.cardTracker.updateKingAfterPlay(
-              { type: "play", cards: userAction.cards },
-              humanSeat,
-              null,
-              ""
-            );
-            ui2.updateHand(game2.hands[humanSeat]);
-            finalSend = { type: "PLAY_ACTION", cards: userAction.cards, playType: result.type };
-          }
+        if (result.action === "play") {
+          player.aiPlayer.strategy.updateCacheAfterPlay(game2.hands[currentTurn], result.cards);
+          finalSend = { type: "PLAY_ACTION", cards: result.cards, playType: void 0 };
         } else {
-          game2.passCards(humanSeat);
           finalSend = { type: "PASS_ACTION" };
         }
         if (mpConfig && finalSend) {
           if (finalSend.type === "PLAY_ACTION") {
             mpConfig.network.send("PLAY_ACTION", {
               player: mpConfig.localToGlobal[0],
-              cards: finalSend.cards,
-              type: finalSend.playType
+              cards: finalSend.cards
             });
           } else {
             mpConfig.network.send("PASS_ACTION", {
@@ -5076,7 +5130,7 @@
           decision = { action: "pass" };
         }
         const elapsed = Date.now() - startTime;
-        const remaining = Math.max(0, aiDelay - elapsed);
+        const remaining = Math.max(0, decision.action === "play" ? aiDelay : aiDelay / 3 - elapsed);
         if (remaining > 0) {
           await sleep(remaining);
         }
@@ -5350,7 +5404,12 @@
       this._el.myHand.addEventListener("click", (e) => {
         const cardEl = e.target.closest(".card");
         if (!cardEl || !this._isMyTurn) return;
-        this._toggleCard(parseInt(cardEl.dataset.idx, 10));
+        const idx = parseInt(cardEl.dataset.idx, 10);
+        if (e.detail === 2) {
+          this._onHandCardDblClick(idx);
+          return;
+        }
+        this._toggleCard(idx);
       });
       this._el.btnPlay.addEventListener("click", () => {
         if (this._inReplay) {
@@ -5373,6 +5432,10 @@
       }
       if (this._el.tableTurnInfo) {
         this._el.tableTurnInfo.addEventListener("click", () => {
+          if (this._inReplay) {
+            if (this.onReplayStep) this.onReplayStep(1);
+            return;
+          }
           if (this._isMyTurn && this._resolve) {
             this._selectedIndices.size > 0 ? this._doPlay() : this._doPass();
             return;
@@ -5441,11 +5504,26 @@
       this._el.myHand.innerHTML = this._renderHand(this._myHand, this._isMyTurn, this._selectedIndices);
       if (this._tableOpen) this._renderCandidates();
     }
+    /** 竖排模式下双击手牌：清除所有选择，选中当前列 */
+    _onHandCardDblClick(idx) {
+      const isVertical = this._isVerticalHandLayout();
+      if (!isVertical) return;
+      const card = this._myHand[idx];
+      if (!card) return;
+      const targetValue = card.level_value ?? card.value;
+      this._clearSelection();
+      this._myHand.forEach((c, i) => {
+        if ((c.level_value ?? c.value) === targetValue) {
+          this._selectedIndices.add(i);
+        }
+      });
+      this._el.myHand.innerHTML = this._renderHand(this._myHand, this._isMyTurn, this._selectedIndices);
+    }
     get llmConfig() {
       return null;
     }
     get aiDelay() {
-      return this.testActive ? 0 : 300;
+      return this.testActive ? 0 : 1200;
     }
     /** 更新测试模式状态并同步过牌按钮文案 */
     setTestMode(mode) {
@@ -5727,7 +5805,7 @@
       });
     }
     // ---------- 轮到自己 ----------
-    showMyTurn(hand, lastPlay, decision, candidates, cardTracker, playAnalyzer) {
+    showMyTurn(hand, lastPlay, decision, candidates, cardTracker, playAnalyzer, turnInfo) {
       this._myHand = hand;
       this._lastPlay = lastPlay;
       this._isMyTurn = true;
@@ -5743,7 +5821,7 @@
       this._cardTracker = cardTracker;
       this.updateHand(hand, true);
       this._enableButtons();
-      this.setTurnInfo("\u8F6E\u5230\u4F60\u51FA\u724C");
+      this.setTurnInfo(turnInfo || "\u8F6E\u5230\u4F60\u51FA\u724C");
       if (this._tableOpen) {
         this._renderCandidates();
         this._updateTableInfo();
@@ -5954,6 +6032,10 @@
         el.addEventListener("click", () => {
           if (this.onReplayJumpTo) this.onReplayJumpTo(parseInt(el.dataset.step, 10));
         });
+        el.addEventListener("dblclick", () => {
+          const step2 = parseInt(el.dataset.step, 10);
+          if (this.onReplayTryStep) this.onReplayTryStep(step2);
+        });
       });
       const cur = list.querySelector(".candidate-group.selected");
       if (cur && cur.scrollIntoView) cur.scrollIntoView({ block: "nearest" });
@@ -5962,15 +6044,15 @@
     _updateTableInfo() {
       if (!this._tableOpen) return;
       const counts = this._counts || [0, 0, 0, 0];
-      if (this._el.tableTopCount) this._el.tableTopCount.textContent = counts[2];
       if (this._el.tableLeftCount) this._el.tableLeftCount.textContent = counts[3];
+      if (this._el.tableTopCount) this._el.tableTopCount.textContent = counts[2];
       if (this._el.tableRightCount) this._el.tableRightCount.textContent = counts[1];
       if (this._el.tableMyCount) this._el.tableMyCount.textContent = counts[0];
       const areas = [
-        { area: this._el.tableTopLastPlay, pos: 2 },
-        // 队友
         { area: this._el.tableLeftLastPlay, pos: 3 },
         // 上家
+        { area: this._el.tableTopLastPlay, pos: 2 },
+        // 队友
         { area: this._el.tableRightLastPlay, pos: 1 },
         // 下家
         { area: this._el.tableMyLastPlay, pos: 0 }
@@ -5993,6 +6075,107 @@
      * - 牌桌打开且宽度 >540：渲染到牌桌四角
      * - 牌桌未打开：渲染到游戏栏上方的流式区块 #hands-strip（每家一行，占据布局空间）
      */
+    /** 四角手牌布局自适应：上下横条动态计算组内重叠，左右竖条动态计算组间间距。 */
+    _fitCornerLayout(corners) {
+      const CARD_LEN = 22;
+      const CARD_GAP = 1;
+      const MIN_GROUP_GAP = 3;
+      corners.querySelectorAll(".table-corner").forEach((corner) => {
+        const cards = corner.querySelector(".corner-cards");
+        if (!cards) return;
+        const groups = cards.querySelectorAll(".corner-group");
+        const n = groups.length;
+        if (n < 2) return;
+        const isHorizontal = corner.classList.contains("corner-top") || corner.classList.contains("corner-bottom");
+        const box = corner.getBoundingClientRect();
+        let totalCardsWidth = 0;
+        let totalOverlapSlots = 0;
+        groups.forEach((g) => {
+          const nCards = g.querySelectorAll(".card-mini").length;
+          totalCardsWidth += nCards * CARD_LEN + (nCards - 1) * CARD_GAP;
+          totalOverlapSlots += Math.max(0, nCards - 1);
+        });
+        if (isHorizontal) {
+          const totalGroupGap = (n - 1) * MIN_GROUP_GAP;
+          const avail = box.width - 6 - totalGroupGap;
+          if (totalOverlapSlots === 0) return;
+          const overlap = (avail - totalCardsWidth) / totalOverlapSlots;
+          const groupOverlap = Math.round(Math.max(-18, Math.min(-3, overlap)) * 10) / 10;
+          cards.style.setProperty("--group-overlap", groupOverlap + "px");
+        } else {
+          let totalHeight = 0;
+          groups.forEach((g) => {
+            totalHeight += g.offsetHeight;
+          });
+          const avail = box.height - 6;
+          const totalGroupGap = (avail - totalHeight) / (n - 1);
+          const margin = Math.round(Math.min(6, totalGroupGap) * 10) / 10;
+          cards.style.setProperty("--group-margin", margin + "px");
+        }
+      });
+    }
+    /** 按点数分组手牌，返回排序后的 [value, [{card, idx}, ...]] 数组 */
+    _groupCornerCards(hand) {
+      const groups = /* @__PURE__ */ new Map();
+      hand.forEach((card, idx) => {
+        const key = card.level_value ?? card.value;
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push({ card, idx });
+      });
+      return [...groups.entries()].sort((a, b) => a[0] - b[0]).map(([value, items]) => {
+        items.sort((a, b) => {
+          const sa = a.card.suit === "JOKER" ? 4 : SUIT_ORDER[a.card.suit] ?? 4;
+          const sb = b.card.suit === "JOKER" ? 4 : SUIT_ORDER[b.card.suit] ?? 4;
+          return sa - sb;
+        });
+        return [value, items];
+      });
+    }
+    /** 复盘单家手牌：按点数分组，组内重叠，组间留间隙 */
+    _renderGroupedReplayCards(hand) {
+      const indexed = hand.map((card, idx) => ({ card, idx }));
+      indexed.sort((a, b) => {
+        const la = a.card.level_value ?? a.card.value;
+        const lb = b.card.level_value ?? b.card.value;
+        if (la !== lb) return la - lb;
+        const sa = a.card.suit === "JOKER" ? 4 : SUIT_ORDER[a.card.suit] ?? 4;
+        const sb = b.card.suit === "JOKER" ? 4 : SUIT_ORDER[b.card.suit] ?? 4;
+        return sa - sb;
+      });
+      const groups = /* @__PURE__ */ new Map();
+      indexed.forEach(({ card, idx }) => {
+        const key = card.level_value ?? card.value;
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push({ card, idx });
+      });
+      const sortedValues = [...groups.keys()].sort((a, b) => a - b);
+      let html = "";
+      sortedValues.forEach((value, gi) => {
+        const items = groups.get(value);
+        items.sort((a, b) => {
+          const sa = a.card.suit === "JOKER" ? 4 : SUIT_ORDER[a.card.suit] ?? 4;
+          const sb = b.card.suit === "JOKER" ? 4 : SUIT_ORDER[b.card.suit] ?? 4;
+          return sa - sb;
+        });
+        let groupHtml = "";
+        items.forEach((item, ci) => {
+          const ml = ci === 0 ? "margin-left:0;" : "margin-left:-4.4px;";
+          groupHtml += `<span style="${ml}">${this._renderCardMini(item.card)}</span>`;
+        });
+        const mg = gi === 0 ? "margin-left:0;" : "margin-left:6px;";
+        html += `<span class="card-group" style="${mg}">${groupHtml}</span>`;
+      });
+      return html;
+    }
+    /** 渲染单边的分组手牌 HTML，添加 data-n 标记每组牌数，供 JS 计算间距 */
+    _renderCornerGroupCards(hand) {
+      const groups = this._groupCornerCards(hand);
+      if (groups.length === 0) return "";
+      return groups.map(([, items]) => {
+        const groupHtml = items.map(({ card }) => this._renderCardMini(card)).join("");
+        return `<div class="corner-group" data-n="${items.length}">${groupHtml}</div>`;
+      }).join("");
+    }
     _renderTableCorners() {
       const hands = this._tableHands || [];
       if (!this._inReplay) {
@@ -6006,55 +6189,30 @@
         if (!corners) return;
         const panel = this._el.tablePanel;
         const size = panel ? panel.getBoundingClientRect().width : 0;
-        if (size <= 500) {
+        if (size <= 400) {
           corners.innerHTML = "";
           return;
         }
         const cfg = [
           { cls: "corner-left", pos: 3, label: "\u4E0A\u5BB6" },
-          // 左（竖列）
+          // 左（竖条）
+          { cls: "corner-top", pos: 2, label: "\u961F\u53CB" },
+          // 上（横条）
           { cls: "corner-right", pos: 1, label: "\u4E0B\u5BB6" },
-          // 右（竖列）
-          { cls: "corner-bottom", pos: 0, label: "\u81EA\u5DF1" },
-          // 下（横行）
-          { cls: "corner-top", pos: 2, label: "\u961F\u53CB" }
-          // 上（横行）
+          // 右（竖条）
+          { cls: "corner-bottom", pos: 0, label: "\u81EA\u5DF1" }
+          // 下（横条）
         ];
         corners.innerHTML = cfg.map(({ cls, pos }) => {
           const hand = hands[pos] || [];
-          const cardsHtml = hand.length ? hand.map((c) => this._renderCardMini(c)).join("") : '<span class="corner-empty">\u5DF2\u51FA\u5B8C</span>';
-          return `<div class="table-corner ${cls}"><div class="corner-cards">${cardsHtml}</div></div>`;
+          const cardsHtml = hand.length ? this._renderCornerGroupCards(hand) : "";
+          return `<div class="table-corner ${cls}">` + (cardsHtml ? `<div class="corner-cards">${cardsHtml}</div>` : '<span class="corner-empty">\u5DF2\u51FA\u5B8C</span>') + `</div>`;
         }).join("");
-        this._fitCornerOverlap(corners);
+        this._fitCornerLayout(corners);
       } else {
         if (this._el.tableCorners) this._el.tableCorners.innerHTML = "";
         this._renderHandsStrip(hands);
       }
-    }
-    /**
-     * 四角手牌间距自适应：写入 --corner-advance（相邻两牌的露出间距，16~23px）。
-     * 默认 16px 为最大重叠；边上空间富余时增大到最多 23px（牌宽 22 + 1px gap，完全不叠）；
-     * 空间不足则保持 16px，超出部分由 .table-corner 的 overflow 截断。
-     */
-    _fitCornerOverlap(corners) {
-      const CARD_LEN = 22;
-      const MIN_ADVANCE = 16;
-      const MAX_ADVANCE = CARD_LEN + 1;
-      corners.querySelectorAll(".table-corner").forEach((corner) => {
-        const cards = corner.querySelector(".corner-cards");
-        if (!cards) return;
-        const n = cards.querySelectorAll(".card-mini").length;
-        if (n < 2) {
-          cards.style.setProperty("--corner-advance", MAX_ADVANCE + "px");
-          return;
-        }
-        const vertical = corner.classList.contains("corner-left") || corner.classList.contains("corner-right");
-        const box = corner.getBoundingClientRect();
-        const avail = (vertical ? box.height - 80 : box.width) - 8;
-        const raw = (avail - CARD_LEN) / (n - 1);
-        const advance = Math.min(MAX_ADVANCE, Math.max(MIN_ADVANCE, Math.round(raw * 10) / 10));
-        cards.style.setProperty("--corner-advance", advance + "px");
-      });
     }
     /** 游戏栏上方区块：四家手牌各一行（自上而下：上家 → 队友 → 下家 → 自己，自己紧贴游戏栏） */
     _renderHandsStrip(hands) {
@@ -6068,8 +6226,8 @@
       ];
       strip.innerHTML = order.map(({ pos, label }) => {
         const hand = hands[pos] || [];
-        const cardsHtml = hand.length ? hand.map((c) => this._renderCardMini(c)).join("") : '<span class="corner-empty">\u5DF2\u51FA\u5B8C</span>';
-        return `<div class="hand-strip-row"><span class="hand-strip-label">${label}</span><span class="hand-strip-cards">${cardsHtml}</span></div>`;
+        const cardsHtml = hand.length ? this._renderCornerGroupCards(hand) : '<span class="corner-empty">\u5DF2\u51FA\u5B8C</span>';
+        return `<div class="hand-strip-row"><span class="hand-strip-label">${label}</span><span class="hand-strip-cards corner-cards">${cardsHtml}</span></div>`;
       }).join("");
       strip.classList.remove("hidden");
     }
@@ -6166,7 +6324,11 @@
       if (this._el.replayHandLabel) this._el.replayHandLabel.textContent = names[dispPlayer];
       if (this._el.replayHandCards) {
         const hand = game2.hands[dispPlayer] || [];
-        this._el.replayHandCards.innerHTML = hand.length ? `<span class="mini-cards">${hand.map((c) => this._renderCardMini(c)).join("")}</span>` : '<span class="replay-empty">\u5DF2\u51FA\u5B8C</span>';
+        if (hand.length === 0) {
+          this._el.replayHandCards.innerHTML = '<span class="replay-empty">\u5DF2\u51FA\u5B8C</span>';
+        } else {
+          this._el.replayHandCards.innerHTML = `<span class="mini-cards">${this._renderGroupedReplayCards(hand)}</span>`;
+        }
       }
       this._lastPlays = lastPlays || {};
       this._highlightSeat = game2.gameState === "idle" ? 0 : game2.currentTurn;
@@ -6375,10 +6537,8 @@
   function teardownModes() {
     stopAutoPlay();
     if (currentMode !== "play" || replayState) ui.exitReplay();
-    if (tryplayDealOverHandler) {
-      eventBus.off("deal_over", tryplayDealOverHandler);
-      tryplayDealOverHandler = null;
-    }
+    eventBus.removeAllListeners("deal_over");
+    tryplayDealOverHandler = null;
     if (currentMode === "tryplay" && TRYPLAY_DEBUG) {
       console.log("[TRYPLAY] \u9000\u51FA\u8BD5\u6253\uFF0C\u6062\u590D AI \u51B3\u7B56\u65E5\u5FD7\u9759\u9ED8");
       if (players) {
@@ -6409,6 +6569,7 @@
   ui.onReplayJump = (where) => replayJump(where);
   ui.onReplayJumpTo = (step) => replayJumpTo(step);
   ui.onReplayTry = tryPlay;
+  ui.onReplayTryStep = tryPlayStep;
   ui.onReplaySwitchPlayer = switchReplayPlayer;
   ui.onTest = () => {
     ui.testActive = true;
@@ -6706,12 +6867,12 @@
     tryplayState = { rec: s.rec, forkStep: s.step, humanSeat };
     ui.setNewButton("\u8FD4\u56DE");
     ui.onNewGame = () => returnToReplay();
-    runTryPlayDeal(s.rec, s.step, humanSeat);
+    runTryPlayDeal(s.rec, s.step, humanSeat, false);
   }
   function returnToReplay() {
     const tp = tryplayState;
     if (!tp) return;
-    stopAutoPlay();
+    teardownModes();
     const { rec, forkStep } = tp;
     tryplayState = null;
     currentMode = "replay";
@@ -6722,7 +6883,21 @@
     ui.enterReplay();
     renderReplayStep();
   }
-  async function runTryPlayDeal(rec, forkStep, humanSeat) {
+  function tryPlayStep(step) {
+    const s = replayState;
+    if (!s || step < 0 || step >= s.rec.moves.length) return;
+    const g = buildReplayGame(s.rec, step);
+    if (g.gameState !== "playing") return;
+    stopAutoPlay();
+    const humanSeat = g.currentTurn;
+    ui.exitReplay();
+    currentMode = "tryplay";
+    tryplayState = { rec: s.rec, forkStep: step, humanSeat };
+    ui.setNewButton("\u8FD4\u56DE");
+    ui.onNewGame = () => returnToReplay();
+    runTryPlayDeal(s.rec, step, humanSeat, true);
+  }
+  async function runTryPlayDeal(rec, forkStep, humanSeat, allHuman = false) {
     const g = buildReplayGame(rec, forkStep);
     g.gameState = "playing";
     if (g.currentTurn !== humanSeat) g.currentTurn = humanSeat;
@@ -6733,7 +6908,7 @@
       if (p.aiPlayer?.strategy) p.aiPlayer.strategy.setTracker(game.cardTracker);
     }
     if (TRYPLAY_DEBUG) {
-      console.log(`[TRYPLAY] \u8FDB\u5165\u8BD5\u6253\u8C03\u8BD5\uFF1A\u4ECE\u7B2C ${forkStep} \u6B65\u63A5\u7BA1 ${POS_NAMES[humanSeat]}\uFF0C\u5F00\u542F 3 \u5BB6 AI \u51B3\u7B56\u65E5\u5FD7`);
+      console.log(`[TRYPLAY] \u8FDB\u5165\u8BD5\u6253\u8C03\u8BD5\uFF1A\u4ECE\u7B2C ${forkStep} \u6B65\u63A5\u7BA1 ${POS_NAMES[humanSeat]}\uFF0C\u5F00\u542F AI \u51B3\u7B56\u65E5\u5FD7`);
       for (const p of players) {
         if (p.aiPlayer?.strategy) p.aiPlayer.strategy._quiet = false;
       }
@@ -6765,7 +6940,7 @@
     tryplayDealOverHandler = onDealOver;
     eventBus.on("deal_over", onDealOver);
     try {
-      await playOneDeal(game, players, ui, null, humanSeat, { dealt: true });
+      await playOneDeal(game, players, ui, null, humanSeat, { dealt: true, tryplay: allHuman });
     } finally {
       if (tryplayDealOverHandler === onDealOver) tryplayDealOverHandler = null;
       eventBus.off("deal_over", onDealOver);
