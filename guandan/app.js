@@ -5498,6 +5498,7 @@
           this._renderCandidates();
           this._updateTableInfo();
           this._refreshHandLayout();
+          this._renderTableCorners();
         }
       });
     }
@@ -6085,6 +6086,7 @@
       const CARD_GAP = 1;
       const MIN_GROUP_GAP = 3;
       corners.querySelectorAll(".table-corner").forEach((corner) => {
+        if (corner.classList.contains("large-table")) return;
         const cards = corner.querySelector(".corner-cards");
         if (!cards) return;
         const groups = cards.querySelectorAll(".corner-group");
@@ -6214,21 +6216,24 @@
           corners.innerHTML = "";
           return;
         }
+        const isLarge = size > 500;
         const cfg = [
-          { cls: "corner-left", pos: 3, label: "\u4E0A\u5BB6" },
-          // 左（竖条）
+          { cls: "corner-bottom", pos: 0, label: "\u81EA\u5DF1" },
+          // 下（横条）
           { cls: "corner-top", pos: 2, label: "\u961F\u53CB" },
           // 上（横条）
-          { cls: "corner-right", pos: 1, label: "\u4E0B\u5BB6" },
+          { cls: "corner-left", pos: 3, label: "\u4E0A\u5BB6" },
+          // 左（竖条）
+          { cls: "corner-right", pos: 1, label: "\u4E0B\u5BB6" }
           // 右（竖条）
-          { cls: "corner-bottom", pos: 0, label: "\u81EA\u5DF1" }
-          // 下（横条）
         ];
         corners.innerHTML = cfg.map(({ cls, pos }) => {
           const hand = hands[pos] || [];
           const cardsHtml = hand.length ? this._renderCornerGroupCards(hand) : "";
-          return `<div class="table-corner ${cls}">` + (cardsHtml ? `<div class="corner-cards">${cardsHtml}</div>` : '<span class="corner-empty">\u51FA\u5B8C</span>') + `</div>`;
+          const largeClass = isLarge && (cls === "corner-top" || cls === "corner-bottom") ? " large-table" : "";
+          return `<div class="table-corner ${cls}${largeClass}">` + (cardsHtml ? `<div class="corner-cards">${cardsHtml}</div>` : '<span class="corner-empty">\u51FA\u5B8C</span>') + `</div>`;
         }).join("");
+        panel.classList.toggle("large-table", isLarge);
         this._fitCornerLayout(corners);
       } else {
         if (this._el.tableCorners) this._el.tableCorners.innerHTML = "";

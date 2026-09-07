@@ -775,6 +775,7 @@ body {
   flex-direction: row;
   gap: 12px;
   padding: 8px 14px;
+  transition: transform 0.2s ease;
 }
 /* 中间行 */
 #middle-row {
@@ -848,12 +849,21 @@ body {
   background: rgba(0, 0, 0, .25);
   border-radius: 12px;
   padding: 8px 14px;
+  transition: transform 0.2s ease;
 }
 
 /* 大牌桌（>400 四边显示手牌）时：玩家区/出牌区向中心收缩，
    边缘让给贴边手牌，避免重叠 */
 #table-panel:has(.table-corner) {
   padding: 42px;
+}
+
+/* 大牌桌（>500）时：自己和队友向中间靠拢 */
+#table-panel:has(.table-corner):has(.large-table) #my-area {
+  transform: translateY(-66px);
+}
+#table-panel:has(.table-corner):has(.large-table) #pos-teammate {
+  transform: translateY(66px);
 }
 
 /* 四角手牌（仅大牌桌 >400 时显示，JS 注入 .table-corner） */
@@ -876,6 +886,22 @@ body {
 }
 .table-corner.corner-top { top: 2px; left: 2px; right: 2px; min-height: 38px; }
 .table-corner.corner-bottom { bottom: 2px; left: 2px; right: 2px; min-height: 38px; }
+/* 大牌桌时：自己和队友背景高度不变，牌溢出显示 */
+.table-corner.corner-top.large-table { overflow: visible; }
+.table-corner.corner-bottom.large-table { overflow: visible; }
+/* 大牌桌时：自己和队友的手牌容器固定高度，竖排牌溢出 */
+.table-corner.corner-top.large-table .corner-cards,
+.table-corner.corner-bottom.large-table .corner-cards {
+  overflow: visible !important;
+  height: 30px;
+}
+/* 大牌桌时：自己手牌底部对齐，队友手牌顶部对齐 */
+.table-corner.corner-bottom.large-table .corner-cards .corner-group {
+  align-self: flex-end;
+}
+.table-corner.corner-top.large-table .corner-cards .corner-group {
+  align-self: flex-start;
+}
 .table-corner.corner-left { left: 2px; top: 42px; bottom: 42px; }
 .table-corner.corner-right { right: 2px; top: 42px; bottom: 42px; }
 /* 上下横条：牌流横向排列，居中 */
@@ -940,6 +966,22 @@ body {
 .table-corner.corner-left .corner-cards .corner-group,
 .table-corner.corner-right .corner-cards .corner-group {
   margin-bottom: var(--group-margin, 3px);
+}
+/* 大牌桌时：自己和队友的手牌改为竖排（组内牌上下堆叠） */
+.table-corner.corner-bottom.large-table .corner-cards .corner-group,
+.table-corner.corner-top.large-table .corner-cards .corner-group {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+}
+.table-corner.corner-bottom.large-table .corner-cards .corner-group .card-mini,
+.table-corner.corner-top.large-table .corner-cards .corner-group .card-mini {
+  margin-left: 0 !important;
+  margin-top: -8px;
+}
+.table-corner.corner-bottom.large-table .corner-cards .corner-group .card-mini:first-child,
+.table-corner.corner-top.large-table .corner-cards .corner-group .card-mini:first-child {
+  margin-top: 0;
 }
 .table-corner .corner-empty { opacity: .6; font-size: 11px; text-align: center; display: block; align-self: center; }
 
