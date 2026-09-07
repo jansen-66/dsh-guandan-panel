@@ -858,12 +858,12 @@ body {
   padding: 42px;
 }
 
-/* 大牌桌（>500）时：自己和队友向中间靠拢 */
+/* 大牌桌（>540）时：自己和队友向中间靠拢，偏移量由 JS 动态设置 --play-area-offset */
 #table-panel:has(.table-corner):has(.large-table) #my-area {
-  transform: translateY(-66px);
+  transform: translateY(calc(-1 * var(--play-area-offset, 80px)));
 }
 #table-panel:has(.table-corner):has(.large-table) #pos-teammate {
-  transform: translateY(66px);
+  transform: translateY(var(--play-area-offset, 80px));
 }
 
 /* 四角手牌（仅大牌桌 >400 时显示，JS 注入 .table-corner） */

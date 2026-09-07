@@ -5602,6 +5602,9 @@
     updateHand(hand, clickable = false) {
       this._myHand = hand;
       this._el.myHand.innerHTML = this._renderHand(hand, clickable, this._selectedIndices);
+      if (this._isVerticalHandLayout()) {
+        this._adjustMyAreaForVerticalHand();
+      }
     }
     _renderHand(hand, clickable, selectedSet) {
       const indexed = hand.map((card, idx) => ({ card, idx }));
@@ -5672,6 +5675,13 @@
       const suit = getSuitSymbol(card);
       return `<span class="card-max ${color}"><span class="cm-rank">${rank}</span><span class="cm-suit">${suit}</span></span>`;
     }
+    /** 四角手牌渲染：大牌桌（>540）的自己/队友用普通 card，其他情况用 mini-card */
+    _renderCardCorner(card, pos, isLargeTable, marginTop) {
+      if (isLargeTable && (pos === 0 || pos === 2)) {
+        return this._renderCard(card, void 0, "", 0, marginTop);
+      }
+      return this._renderCardMini(card);
+    }
     /** 手牌区是否使用竖向排列：牌桌浮层打开且 table-panel 宽度 > 360 */
     _isVerticalHandLayout() {
       return this._tableOpen && this._getTableCardSize() !== "mini";
@@ -5702,13 +5712,41 @@
           handEl.style.setProperty("--card-h", cardH + "px");
           handEl.style.setProperty("--card-font", 13 * fontScale + "px");
           handEl.style.setProperty("--card-suit-font", 12 * fontScale + "px");
+          this._adjustMyAreaForVerticalHand();
         }
       } else {
         handEl.style.removeProperty("--card-w");
         handEl.style.removeProperty("--card-h");
         handEl.style.removeProperty("--card-font");
         handEl.style.removeProperty("--card-suit-font");
+        const myArea = document.getElementById("my-area");
+        if (myArea) myArea.style.transform = "";
       }
+    }
+    /** 根据竖排手牌高度动态上移 my-area */
+    _adjustMyAreaForVerticalHand() {
+      const myArea = document.getElementById("my-area");
+      const tableOverlay = document.getElementById("table-overlay");
+      if (!myArea || !tableOverlay) return;
+      requestAnimationFrame(() => {
+        const handEl = this._el.myHand;
+        if (!handEl) return;
+        const groups = handEl.querySelectorAll(".card-group.vertical");
+        if (groups.length === 0) {
+          myArea.style.transform = "";
+          return;
+        }
+        let maxHeight = 0;
+        groups.forEach((group) => {
+          const h = group.offsetHeight;
+          if (h > maxHeight) maxHeight = h;
+        });
+        const gameBarHeight = 96;
+        const tablePadding = 12;
+        const safeMargin = 10;
+        const translateY = Math.max(0, maxHeight - gameBarHeight - tablePadding) + safeMargin;
+        myArea.style.transform = `translateY(-${translateY}px)`;
+      });
     }
     /** 隐藏/显示第一行信息 */
     _toggleStatusRow(hide) {
@@ -6191,11 +6229,14 @@
       return html;
     }
     /** 渲染单边的分组手牌 HTML，添加 data-n 标记每组牌数，供 JS 计算间距 */
-    _renderCornerGroupCards(hand) {
+    _renderCornerGroupCards(hand, pos, isLargeTable) {
       const groups = this._groupCornerCards(hand);
       if (groups.length === 0) return "";
       return groups.map(([, items]) => {
-        const groupHtml = items.map(({ card }) => this._renderCardMini(card)).join("");
+        const groupHtml = items.map(({ card }, i) => {
+          const mt = i === 0 ? 0 : -16;
+          return this._renderCardCorner(card, pos, isLargeTable, mt);
+        }).join("");
         return `<div class="corner-group" data-n="${items.length}">${groupHtml}</div>`;
       }).join("");
     }
@@ -6216,7 +6257,7 @@
           corners.innerHTML = "";
           return;
         }
-        const isLarge = size > 500;
+        const isLarge = size > 540;
         const cfg = [
           { cls: "corner-bottom", pos: 0, label: "\u81EA\u5DF1" },
           // 下（横条）
@@ -6229,11 +6270,15 @@
         ];
         corners.innerHTML = cfg.map(({ cls, pos }) => {
           const hand = hands[pos] || [];
-          const cardsHtml = hand.length ? this._renderCornerGroupCards(hand) : "";
+          const cardsHtml = hand.length ? this._renderCornerGroupCards(hand, pos, isLarge) : "";
           const largeClass = isLarge && (cls === "corner-top" || cls === "corner-bottom") ? " large-table" : "";
           return `<div class="table-corner ${cls}${largeClass}">` + (cardsHtml ? `<div class="corner-cards">${cardsHtml}</div>` : '<span class="corner-empty">\u51FA\u5B8C</span>') + `</div>`;
         }).join("");
         panel.classList.toggle("large-table", isLarge);
+        if (isLarge) {
+          const offset = 80 + (size - 540) * 0.5;
+          panel.style.setProperty("--play-area-offset", `${offset}px`);
+        }
         this._fitCornerLayout(corners);
       } else {
         if (this._el.tableCorners) this._el.tableCorners.innerHTML = "";
@@ -6252,7 +6297,7 @@
       ];
       strip.innerHTML = order.map(({ pos, label }) => {
         const hand = hands[pos] || [];
-        const cardsHtml = hand.length ? this._renderCornerGroupCards(hand) : '<span class="corner-empty">\u5DF2\u51FA\u5B8C</span>';
+        const cardsHtml = hand.length ? this._renderCornerGroupCards(hand, pos, false) : '<span class="corner-empty">\u5DF2\u51FA\u5B8C</span>';
         return `<div class="hand-strip-row"><span class="hand-strip-label">${label}</span><span class="hand-strip-cards corner-cards">${cardsHtml}</span></div>`;
       }).join("");
       strip.classList.remove("hidden");
