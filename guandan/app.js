@@ -199,6 +199,44 @@
     const nonWild = hand.filter((c) => !isWildCard(c));
     return { nonWild, wilds };
   }
+  function _mainValueCards(cards) {
+    const nonWild = cards.filter((c) => !isWildCard(c));
+    return nonWild.length > 0 ? nonWild : cards;
+  }
+  function _tripleWithPairMainValue(cards) {
+    const nonWild = cards.filter((c) => !isWildCard(c));
+    const wc = cards.length - nonWild.length;
+    const count = {};
+    for (const c of nonWild) {
+      const v = getLevelValue(c);
+      count[v] = (count[v] || 0) + 1;
+    }
+    const vals = Object.keys(count).map(Number);
+    const canFill = (v) => v < 16;
+    let best = 0;
+    for (const tripleVal of vals) {
+      const needTriple = Math.max(0, 3 - count[tripleVal]);
+      if (needTriple > wc) continue;
+      if (needTriple > 0 && !canFill(tripleVal)) continue;
+      const rest = wc - needTriple;
+      let hasPair = rest >= 2;
+      if (!hasPair) {
+        for (const pairVal of vals) {
+          if (pairVal === tripleVal) continue;
+          if (count[pairVal] >= 2) {
+            hasPair = true;
+            break;
+          }
+          if (canFill(pairVal) && count[pairVal] + rest >= 2) {
+            hasPair = true;
+            break;
+          }
+        }
+      }
+      if (hasPair && tripleVal > best) best = tripleVal;
+    }
+    return best;
+  }
   function applyOffset(mainValue, threshold, offset) {
     return mainValue > threshold ? mainValue + offset : mainValue;
   }
@@ -223,11 +261,14 @@
         }
       }
       const values = [...cards].sort((a, b) => a.value - b.value).map((c) => c.value);
+      if (values.includes(14) && values.includes(2) && values.includes(3) && values.includes(4) && values.includes(5)) {
+        return FLUSH_BASE + 1;
+      }
       return FLUSH_BASE + values[0];
     }
     if (ctype === "BOMB") {
       const size = cards.length;
-      const lv = getLevelValue2(cards[0]);
+      const lv = getLevelValue2(_mainValueCards(cards)[0]);
       return size * BOMB_SIZE_SCALE + lv;
     }
     if (ctype === "STRAIGHT") {
@@ -265,10 +306,7 @@
             const existing = nwCount[v] || 0;
             if (existing < 2) needed += 2 - existing;
           }
-          if (needed <= wc) {
-            effectiveStart = start;
-            break;
-          }
+          if (needed <= wc) effectiveStart = start;
         }
         if (effectiveStart === 0) {
           let needed = 0;
@@ -289,24 +327,18 @@
       return applyOffset(values[0], THREE_PAIRS_OFFSET_THRESHOLD, THREE_PAIRS_OFFSET);
     }
     if (ctype === "TWO_TRIPLES") {
-      const values = [...cards].sort((a, b) => a.value - b.value).map((c) => c.value);
-      if (values.length === 6 && values.includes(2) && values.includes(14)) {
+      const allValues = cards.map((c) => c.value).sort((a, b) => a - b);
+      if (allValues.length === 6 && allValues.includes(2) && allValues.includes(14)) {
         return applyOffset(1, TWO_TRIPLES_OFFSET_THRESHOLD, TWO_TRIPLES_OFFSET);
       }
+      const values = _mainValueCards(cards).map((c) => c.value).sort((a, b) => a - b);
       return applyOffset(values[0], TWO_TRIPLES_OFFSET_THRESHOLD, TWO_TRIPLES_OFFSET);
     }
     if (ctype === "TRIPLE_WITH_PAIR") {
-      const count = {};
-      for (const c of cards) {
-        const v = getLevelValue2(c);
-        count[v] = (count[v] || 0) + 1;
-      }
-      for (const v in count) {
-        if (count[v] >= 3) return Number(v);
-      }
-      return Math.max(...cards.map((c) => getLevelValue2(c)));
+      const mv = _tripleWithPairMainValue(cards);
+      if (mv > 0) return mv;
     }
-    return Math.max(...cards.map((c) => getLevelValue2(c)));
+    return Math.max(..._mainValueCards(cards).map((c) => getLevelValue2(c)));
   }
   function _hasStraight(hand) {
     const eligible = [];
@@ -554,63 +586,40 @@
   function findAllStraights(hand) {
     const straights = [];
     const { nonWild } = getWildCards(hand);
-    const bySuit = {};
-    for (const card of nonWild) {
-      if (card.suit === "JOKER") continue;
-      if (!bySuit[card.suit]) bySuit[card.suit] = [];
-      bySuit[card.suit].push(card.value);
-    }
-    for (const suit in bySuit) {
-      const values = [...new Set(bySuit[suit])].sort((a, b) => a - b);
-      if (values.length < 5) continue;
-      let i = 0;
-      while (i < values.length) {
-        let j = i;
-        while (j + 1 < values.length && values[j + 1] === values[j] + 1) j++;
-        const len = j - i + 1;
-        if (len >= 5) {
-          for (let start = i; start <= j - 4; start++) {
-            const segment = values.slice(start, start + 5);
-            const cards = [];
-            for (const v of segment) {
-              const found = hand.find((c) => c.suit === suit && c.value === v && !isWildCard(c));
-              if (found) cards.push(found);
-            }
-            if (cards.length === 5) {
-              const rawMv = segment[0];
-              straights.push({
-                type: "STRAIGHT",
-                cards,
-                main_value: applyOffset(rawMv, STRAIGHT_OFFSET_THRESHOLD, STRAIGHT_OFFSET),
-                card_count: 5,
-                is_bomb: false
-              });
-            }
-          }
-        }
-        i = j + 1;
+    const playable = nonWild.filter((c) => c.suit !== "JOKER");
+    const values = [...new Set(playable.map((c) => c.value))].sort((a, b) => a - b);
+    const pickCards = (vals) => {
+      const suits = [...new Set(playable.map((c) => c.suit))];
+      for (const suit of suits) {
+        const same = vals.map((v) => playable.find((c) => c.value === v && c.suit === suit));
+        if (same.every(Boolean)) return same;
       }
-    }
-    const a2345 = [];
-    for (const suit in bySuit) {
-      if ([14, 2, 3, 4, 5].every((v) => bySuit[suit].includes(v))) {
-        const cards = [];
-        for (const v of [14, 2, 3, 4, 5]) {
-          const found = hand.find((c) => c.suit === suit && c.value === v && !isWildCard(c));
-          if (found) cards.push(found);
-        }
-        if (cards.length === 5) {
-          a2345.push({
-            type: "STRAIGHT",
-            cards,
-            main_value: applyOffset(1, STRAIGHT_OFFSET_THRESHOLD, STRAIGHT_OFFSET),
-            card_count: 5,
-            is_bomb: false
-          });
-        }
+      return vals.map((v) => playable.find((c) => c.value === v));
+    };
+    const addStraight = (vals, rawMv) => {
+      const cards = pickCards(vals);
+      if (cards.some((c) => !c)) return;
+      straights.push({
+        type: "STRAIGHT",
+        cards,
+        main_value: applyOffset(rawMv, STRAIGHT_OFFSET_THRESHOLD, STRAIGHT_OFFSET),
+        card_count: 5,
+        is_bomb: false
+      });
+    };
+    let i = 0;
+    while (i < values.length) {
+      let j = i;
+      while (j + 1 < values.length && values[j + 1] === values[j] + 1) j++;
+      for (let start = i; start <= j - 4; start++) {
+        addStraight(values.slice(start, start + 5), values[start]);
       }
+      i = j + 1;
     }
-    return [...straights, ...a2345];
+    if ([14, 2, 3, 4, 5].every((v) => values.includes(v))) {
+      addStraight([14, 2, 3, 4, 5], 1);
+    }
+    return straights;
   }
   function findAllFlushes(hand) {
     const flushes = [];
@@ -715,31 +724,33 @@
     if (wilds.length > 0) {
       const nwCount = {};
       for (const c of nonWild) nwCount[c.value] = (nwCount[c.value] || 0) + 1;
+      let bestStart = 0;
       for (let start = 2; start <= 12; start++) {
         let needed = 0;
         for (let v = start; v < start + 3; v++) {
           const existing = nwCount[v] || 0;
           if (existing < 2) needed += 2 - existing;
         }
-        if (needed <= wilds.length) {
-          const cards = [];
-          const remWilds = [...wilds];
-          for (let v = start; v < start + 3; v++) {
-            const existingCards = nonWild.filter((c) => c.value === v).slice(0, 2);
-            cards.push(...existingCards);
-            const short = 2 - existingCards.length;
-            cards.push(...remWilds.splice(0, short));
-          }
-          results.push({
-            type: "THREE_PAIRS",
-            cards,
-            main_value: applyOffset(start, THREE_PAIRS_OFFSET_THRESHOLD, THREE_PAIRS_OFFSET),
-            card_count: 6,
-            is_bomb: false
-          });
-        }
+        if (needed <= wilds.length) bestStart = start;
       }
-      {
+      if (bestStart > 0) {
+        const cards = [];
+        const remWilds = [...wilds];
+        for (let v = bestStart; v < bestStart + 3; v++) {
+          const existingCards = nonWild.filter((c) => c.value === v).slice(0, 2);
+          cards.push(...existingCards);
+          const short = 2 - existingCards.length;
+          cards.push(...remWilds.splice(0, short));
+        }
+        results.push({
+          type: "THREE_PAIRS",
+          cards,
+          main_value: applyOffset(bestStart, THREE_PAIRS_OFFSET_THRESHOLD, THREE_PAIRS_OFFSET),
+          card_count: 6,
+          is_bomb: false
+        });
+      }
+      if (bestStart === 0) {
         let needed = 0;
         for (const v of [14, 2, 3]) {
           const existing = nwCount[v] || 0;
@@ -808,15 +819,11 @@
     const candidates = [];
     const count = {};
     for (const c of nonJokerNonWild) count[c.value] = (count[c.value] || 0) + 1;
-    const maxLv = (v) => {
-      const cards = nonJokerNonWild.filter((c) => c.value === v);
-      return cards.length > 0 ? getLevelValue(cards[0]) : v;
-    };
     for (const val in count) {
       if (count[val] >= 1 && wildCount >= 1) {
         const singleCard = nonJokerNonWild.find((c) => c.value == val);
         const pairCards = [singleCard, wilds[0]];
-        const lv = maxLv(val);
+        const lv = calcMainValue("PAIR", pairCards);
         if (!lastPlay || lv > (lastPlay.main_value || 0)) {
           candidates.push({
             type: "PAIR",
@@ -833,7 +840,7 @@
       const valCards = nonJokerNonWild.filter((c) => c.value == val);
       if (count[val] >= 2 && wildCount >= 1) {
         const tripleCards = [...valCards.slice(0, 2), wilds[0]];
-        const lv = maxLv(val);
+        const lv = calcMainValue("TRIPLE", tripleCards);
         if (!lastPlay || lv > (lastPlay.main_value || 0)) {
           candidates.push({
             type: "TRIPLE",
@@ -847,7 +854,7 @@
       }
       if (count[val] >= 1 && wildCount >= 2) {
         const tripleCards = [...valCards.slice(0, 1), wilds[0], wilds[1]];
-        const lv = maxLv(val);
+        const lv = calcMainValue("TRIPLE", tripleCards);
         if (!lastPlay || lv > (lastPlay.main_value || 0)) {
           candidates.push({
             type: "TRIPLE",
@@ -882,9 +889,10 @@
             const straightValues = values.slice(start, end);
             const needed = 5 - straightValues.length;
             if (needed <= wildCount) {
-              const straightCards = bySuit[suit].filter((v) => straightValues.includes(v)).slice(0, straightValues.length).map((v) => nonWild.find((c) => c.value === v));
+              const straightCards = straightValues.map((v) => nonWild.find((c) => c.value === v));
+              if (straightCards.some((c) => !c)) continue;
               const allCards = [...straightCards, ...wilds.slice(0, needed)];
-              const lv = straightValues[straightValues.length - 1];
+              const lv = calcMainValue("STRAIGHT", allCards);
               if (!lastPlay || lv > (lastPlay.main_value || 0)) {
                 candidates.push({
                   type: "STRAIGHT",
@@ -2562,9 +2570,9 @@
           if (isTeammateTurn && this.tracker?.getPlayerCount(lastPlay.player) > 0) continue;
           if (isLastBomb) {
             if (oppCards > maxAllowed && candidates.length > 1) {
-              if (!quiet && myBombs > 0 && beatCandidates.length == 0) {
+              if (myBombs > 0 && beatCandidates.length == 0) {
                 this._bombSkipped = true;
-                console.log(`[BOMB_SKIP] [${this.position}#] ${myBombs} bomb(s), ${lastPlayer}#${oppCards} > ${maxAllowed}, skipbom`);
+                if (!quiet) console.log(`[BOMB_SKIP] [${this.position}#] ${myBombs} bomb(s), ${lastPlayer}#${oppCards} > ${maxAllowed}, skipbom`);
               }
             } else if (candMv > lastMv) {
               beatCandidates.push(cand);
@@ -2593,9 +2601,9 @@
       if (!isLastBomb) {
         if (lastPlayer === (this.position + 1) % 4) maxAllowed -= 3;
         if (oppCards > maxAllowed && candidates.length > 1) {
-          if (!quiet && myBombs > 0 && beatCandidates.length == 0) {
+          if (myBombs > 0 && beatCandidates.length == 0) {
             this._bombSkipped = true;
-            console.log(`[BOMB_SKIP] [${this.position}#] ${myBombs} bomb(s), ${lastPlayer}#${oppCards} > ${maxAllowed}, skip`);
+            if (!quiet) console.log(`[BOMB_SKIP] [${this.position}#] ${myBombs} bomb(s), ${lastPlayer}#${oppCards} > ${maxAllowed}, skip`);
           }
         } else {
           for (const cand of candidates) {
@@ -2705,7 +2713,7 @@
      */
     _splitForTriple(candidates, lastMv, beatCandidates) {
       const wildBombs = candidates.filter(
-        (c) => c.type === "BOMB" && c.cards.some(isWildCard) && this._isHighCardType(c.main_value)
+        (c) => c.type === "BOMB" && c.cards.some(isWildCard) && this._isHighCardType(c.main_value - 400)
       );
       for (const b of wildBombs) {
         this._addSplitTriple(b.cards, lastMv, beatCandidates);
@@ -2743,7 +2751,7 @@
       );
       if (minPair.main_value >= 11) return;
       const wildBombs = candidates.filter(
-        (c) => c.type === "BOMB" && c.cards.some(isWildCard) && this._isHighCardType(c.main_value)
+        (c) => c.type === "BOMB" && c.cards.some(isWildCard) && this._isHighCardType(c.main_value - 400)
       );
       for (const b of wildBombs) {
         const tripleCards = b.cards.slice(0, 3);
@@ -5126,7 +5134,7 @@
           decision = { action: "pass" };
         }
         const elapsed = Date.now() - startTime;
-        const remaining = Math.max(0, decision.action === "play" ? aiDelay : aiDelay / 3 - elapsed);
+        const remaining = Math.max(0, game2.lastPlay || decision.action === "play" ? aiDelay : aiDelay / 3 - elapsed);
         if (remaining > 0) {
           await sleep(remaining);
         }
