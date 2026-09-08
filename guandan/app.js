@@ -2339,7 +2339,8 @@
       }
       const handSize = this._lastHand?.length || 0;
       if (handSize <= 10) {
-        const merged = this._mergeCandidates(candidates);
+        const boostedCandidates = this._mergeWildIntoBomb(candidates);
+        const merged = this._mergeCandidates(boostedCandidates);
         const maxList = [];
         const bombList = [];
         const nonMaxList = [];
@@ -2410,11 +2411,16 @@
       if (!this.tracker || !candidates || candidates.length <= 1) return candidates;
       const safe = [];
       const fallback = [];
+      const bombs = [];
       const upCount = this.tracker.getPlayerCount((playerPos + 3) % 4);
       const downCount = this.tracker.getPlayerCount((playerPos + 1) % 4);
       const teammateCount = this.tracker.getPlayerCount((playerPos + 2) % 4);
       if (!this._quiet) console.log(`[STRATEGY] hand-${candidates.length}: ${candidates.map((c) => c.cards.map((card) => card.display).join("")).join(", ")}`);
       for (const c of candidates) {
+        if (c.type === "BOMB" || c.type === "FLUSH_STRAIGHT" || c.type === "FOUR_JOKER") {
+          bombs.push(c);
+          continue;
+        }
         const cardCount = c.cards?.length || 0;
         if ((teammateCount !== upCount && cardCount === upCount || teammateCount !== downCount && cardCount === downCount) && this._isMaxOutside(c, this._lastHand) !== 1) {
           if (cardCount === 5 && c.type === "TRIPLE_WITH_PAIR") {
@@ -2470,6 +2476,10 @@
         if (!this._quiet) console.log(`[STRATEGY] \u6392\u5E8F-${merged.length}: ${merged.map((c) => c.cards.map((card) => card.display).join("")).join(", ")}`);
         safe.length = 0;
         safe.push(...merged);
+      }
+      if (bombs.length > 0) {
+        if (fallback.length > 1) fallback.push(...bombs);
+        else safe.push(...bombs);
       }
       return safe.length > 0 ? safe : fallback;
     }
@@ -3122,6 +3132,40 @@
         candidate.main_value,
         myHandCount
       );
+    }
+    /**
+     * 冲刺合并散万能进炸弹：只要候选池里同时存在散万能牌(WILD)和炸弹(BOMB)，就把所有散万能
+     * 并入池中张数最少的那个炸弹，生成一个更大的炸弹候选并替换原炸弹、移除散 WILD，结果回候选池。
+     *
+     * 与 _consumeWildCards 的区别：consume 只在组牌阶段把万能补进 TRIPLE(3张)成 4 张炸弹，
+     * 不会给已经成型的 4 张炸弹补第 5 张。冲刺(争上游、剩牌少)时，把散万能合进炸弹能让
+     * 炸弹变大、散手变少——无论能不能整手清空都合（如 4张炸弹+1散万能 → 5张炸弹）。
+     *
+     * 不改变 _consumeWildCards 全局行为：本方法仅由冲刺分支调用。
+     * 炸弹真牌 ≥1 张即定主值，任意张散万能并入后引擎仍识别为 bomb，故可安全吸收。
+     *
+     * @param {Array} candidates - 候选牌列表（可能含散 WILD 项）
+     * @returns {Array} 散万能已并入炸弹后的候选列表（若无散万能或炸弹则原样返回）
+     */
+    _mergeWildIntoBomb(candidates) {
+      if (!candidates || candidates.length < 2) return candidates;
+      const wildCands = candidates.filter((c) => c.type === "WILD");
+      if (wildCands.length === 0) return candidates;
+      const bombs = candidates.filter((c) => (c.type || "").toUpperCase() === "BOMB");
+      if (bombs.length === 0) return candidates;
+      const target = bombs.reduce(
+        (a, b) => (a.cards?.length || 0) <= (b.cards?.length || 0) ? a : b
+      );
+      const allWildCards = wildCands.flatMap((c) => c.cards || []);
+      const boostedCards = [...target.cards || [], ...allWildCards];
+      const boosted = { type: "BOMB", cards: boostedCards, main_value: calcMainValue("BOMB", boostedCards) };
+      if (!this._quiet) {
+        console.log(`[RUSH_WILD] [${this.position}#] \u6563\u4E07\u80FD\u5E76\u5165\u70B8\u5F39: ${boostedCards.map((c) => this._formatCard(c)).join(" ")} (${boostedCards.length}\u5F20)`);
+      }
+      const result = candidates.filter((c) => c !== target && c.type !== "WILD");
+      result.push(boosted);
+      result.sort((a, b) => a.main_value - b.main_value || 0);
+      return result;
     }
     /**
      * 合并 candidates：TRIPLE+PAIR→TRIPLE_WITH_PAIR，连续TRIPLE→TWO_TRIPLES，连续PAIR→THREE_PAIRS
