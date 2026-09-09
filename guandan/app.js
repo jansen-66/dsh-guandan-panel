@@ -5783,6 +5783,10 @@
       const myArea = document.getElementById("my-area");
       const tableOverlay = document.getElementById("table-overlay");
       if (!myArea || !tableOverlay) return;
+      if (this._inReplay) {
+        myArea.style.transform = "";
+        return;
+      }
       requestAnimationFrame(() => {
         const handEl = this._el.myHand;
         if (!handEl) return;
@@ -6404,6 +6408,8 @@
     /** 进入复盘界面：手牌区换成「回放控件」，单家手牌仅牌桌打开时显示；「出牌」按钮变为试打入口 */
     enterReplay() {
       this._inReplay = true;
+      const myArea = document.getElementById("my-area");
+      if (myArea) myArea.style.transform = "";
       this._el.myHand.style.display = "none";
       this._el.replayControls.classList.remove("hidden");
       this._el.replayHand.classList.toggle("hidden", !this._tableOpen);
