@@ -2472,14 +2472,25 @@
           else if (ismax === 1) group1.push(c);
           else group0.push(c);
         }
-        const merged = [...group2, ...group0, ...group1];
-        if (!this._quiet) console.log(`[STRATEGY] \u6392\u5E8F-${merged.length}: ${merged.map((c) => c.cards.map((card) => card.display).join("")).join(", ")}`);
-        safe.length = 0;
-        safe.push(...merged);
+        if (group0.length <= 1) {
+          const merged = [...group2, ...group0, ...group1];
+          if (!this._quiet) console.log(`[STRATEGY] \u6392\u5E8F-${merged.length}: ${merged.map((c) => c.cards.map((card) => card.display).join("")).join(", ")}`);
+          safe.length = 0;
+          safe.push(...merged);
+        }
       }
       if (bombs.length > 0) {
         if (fallback.length > 1) fallback.push(...bombs);
         else safe.push(...bombs);
+      }
+      if (safe.length == 0) {
+        const singles = fallback.filter((c) => c.cards?.length === 1);
+        if (singles.length > 0) {
+          const others = fallback.filter((c) => c.cards?.length !== 1);
+          singles.sort((a, b) => b.cards[0].level_value - a.cards[0].level_value);
+          fallback.length = 0;
+          fallback.push(...others, ...singles);
+        }
       }
       return safe.length > 0 ? safe : fallback;
     }
