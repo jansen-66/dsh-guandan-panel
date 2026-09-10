@@ -2439,6 +2439,7 @@
       if (!this._quiet) {
         console.log(`[STRATEGY] safe-${safe.length}: ${safe.map((c) => c.cards.map((card) => card.display).join("")).join(", ")}`);
         console.log(`[STRATEGY] fallback-${fallback.length}: ${fallback.map((c) => c.cards.map((card) => card.display).join("")).join(", ")}`);
+        console.log(`[STRATEGY] bombs-${bombs.length}: ${bombs.map((c) => c.cards.map((card) => card.display).join("")).join(", ")}`);
       }
       if (upCount <= 8 && safe.length > 0) {
         const idx = this._findPreferredCandidate(safe, upCount);
@@ -2490,6 +2491,7 @@
           singles.sort((a, b) => b.cards[0].level_value - a.cards[0].level_value);
           fallback.length = 0;
           fallback.push(...others, ...singles);
+          if (!this._quiet) console.log(`[STRATEGY] \u5355\u5F20-${singles.length}: ${fallback.map((c) => c.cards.map((card) => card.display).join("")).join(", ")}`);
         }
       }
       return safe.length > 0 ? safe : fallback;
@@ -5446,6 +5448,7 @@
       this._selectedCandidates = /* @__PURE__ */ new Set();
       this._tableOpen = false;
       this._inReplay = false;
+      this._inTryplay = false;
       this._replayPlaying = false;
       this._highlightSeat = 0;
       this.testMode = true;
@@ -5460,6 +5463,7 @@
       this.onReplayJumpTo = null;
       this.onReplayTry = null;
       this.onReplaySwitchPlayer = null;
+      this.onTryplayBack = null;
       this._el.myHand.addEventListener("click", (e) => {
         const cardEl = e.target.closest(".card");
         if (!cardEl || !this._isMyTurn) return;
@@ -5951,10 +5955,12 @@
     _enableButtons() {
       this._el.btnPlay.disabled = false;
       this._el.btnPass.disabled = false;
+      this._setTryplayButtonsEnabled(true);
     }
     _disableButtons() {
       this._el.btnPlay.disabled = true;
       this._el.btnPass.disabled = true;
+      this._setTryplayButtonsEnabled(false);
     }
     // 记牌器张数颜色：4-6 红色，2-3 黄色，1 绿色，否则默认
     _countClass(count) {
@@ -6405,6 +6411,36 @@
     setNewButton(label) {
       if (this._el.btnNew) this._el.btnNew.textContent = label;
     }
+    /** 进入试打：在「组牌列表」标题栏的「关闭」左侧插入「回退」按钮，并让「返回」也进入等待态 */
+    mountTryplayBack() {
+      this._inTryplay = true;
+      if (this._el.btnNew) this._el.btnNew.disabled = true;
+      if (document.getElementById("btn-tryplay-back")) return;
+      const closeBtn = this._el.btnTableClose;
+      if (!closeBtn || !closeBtn.parentNode) return;
+      const btn = document.createElement("button");
+      btn.id = "btn-tryplay-back";
+      btn.className = "ghost-btn";
+      btn.textContent = "\u56DE\u9000";
+      btn.disabled = true;
+      btn.addEventListener("click", () => {
+        if (this.onTryplayBack) this.onTryplayBack();
+      });
+      closeBtn.parentNode.insertBefore(btn, closeBtn);
+    }
+    /** 退出试打：移除「回退」按钮，恢复「返回/新局」按钮可用 */
+    unmountTryplayBack() {
+      this._inTryplay = false;
+      if (this._el.btnNew) this._el.btnNew.disabled = false;
+      const btn = document.getElementById("btn-tryplay-back");
+      if (btn) btn.remove();
+    }
+    /** 「回退」与试打时的「返回」仅在等待人类决策期间可用（非试打时不影响「新局」） */
+    _setTryplayButtonsEnabled(enabled) {
+      const back = document.getElementById("btn-tryplay-back");
+      if (back) back.disabled = !enabled;
+      if (this._inTryplay && this._el.btnNew) this._el.btnNew.disabled = !enabled;
+    }
     /** 进入复盘界面：手牌区换成「回放控件」，单家手牌仅牌桌打开时显示；「出牌」按钮变为试打入口 */
     enterReplay() {
       this._inReplay = true;
@@ -6662,6 +6698,7 @@
   var game = null;
   var players = null;
   var dealRecord = null;
+  var tryplayRec = null;
   var currentMode = "play";
   var replayState = null;
   var tryplayState = null;
@@ -6669,6 +6706,7 @@
   function teardownModes() {
     stopAutoPlay();
     if (currentMode !== "play" || replayState) ui.exitReplay();
+    ui.unmountTryplayBack();
     eventBus.removeAllListeners("deal_over");
     tryplayDealOverHandler = null;
     if (currentMode === "tryplay" && TRYPLAY_DEBUG) {
@@ -6703,6 +6741,7 @@
   ui.onReplayTry = tryPlay;
   ui.onReplayTryStep = tryPlayStep;
   ui.onReplaySwitchPlayer = switchReplayPlayer;
+  ui.onTryplayBack = () => returnToReplay("branch");
   ui.onTest = () => {
     ui.testActive = true;
     ui.setTestMode(true);
@@ -6721,6 +6760,7 @@
         firstPlayer: data.firstPlayer,
         moves: []
       };
+      tryplayRec = null;
     });
     eventBus.on("play_result", (data) => {
       if (data.player === 0 && !data.isPass && !ui.testActive) {
@@ -6730,6 +6770,8 @@
       const count = game.playerCounts[data.player];
       if (currentMode === "play" && dealRecord) {
         dealRecord.moves.push({ player: data.player, isPass: !!data.isPass, cards: data.cards || [], type: data.type });
+      } else if (currentMode === "tryplay" && tryplayState) {
+        recordTryplayMove(data);
       }
       if (data.isPass) {
         game.playHistory.push(`${name} >> PASS (\u4F59${count}\u5F20)`);
@@ -6987,6 +7029,31 @@
       ui.updateReplayControls(replayState.step, replayState.rec.moves.length, false);
     }
   }
+  function cloneDealRecord(rec) {
+    return {
+      level: rec.level,
+      initialHands: rec.initialHands.map((h) => h.map((c) => ({ ...c }))),
+      firstPlayer: rec.firstPlayer,
+      moves: rec.moves.map((m) => ({
+        player: m.player,
+        isPass: m.isPass,
+        cards: (m.cards || []).map((c) => ({ ...c })),
+        type: m.type
+      }))
+    };
+  }
+  function resolveTryplayRecord(cur, step) {
+    if (cur !== dealRecord) return cur;
+    tryplayRec = cloneDealRecord(dealRecord);
+    tryplayRec.forkStep = step;
+    return tryplayRec;
+  }
+  function recordTryplayMove(data) {
+    const tp = tryplayState;
+    if (tp.newMoves === 0) tp.rec.moves.length = tp.forkStep;
+    tp.rec.moves.push({ player: data.player, isPass: !!data.isPass, cards: data.cards || [], type: data.type });
+    tp.newMoves++;
+  }
   function tryPlay() {
     const s = replayState;
     if (!s || s.step >= s.rec.moves.length) return;
@@ -6994,25 +7061,48 @@
     if (g.gameState !== "playing") return;
     stopAutoPlay();
     const humanSeat = g.currentTurn;
+    const rec = resolveTryplayRecord(s.rec, s.step);
     ui.exitReplay();
     currentMode = "tryplay";
-    tryplayState = { rec: s.rec, forkStep: s.step, humanSeat };
+    tryplayState = { rec, forkStep: s.step, humanSeat, newMoves: 0 };
     ui.setNewButton("\u8FD4\u56DE");
-    ui.onNewGame = () => returnToReplay();
-    runTryPlayDeal(s.rec, s.step, humanSeat, false);
+    ui.onNewGame = () => returnToReplay("original");
+    ui.mountTryplayBack();
+    runTryPlayDeal(rec, s.step, humanSeat, false);
   }
-  function returnToReplay() {
+  function returnToReplay(target = "branch") {
     const tp = tryplayState;
     if (!tp) return;
     teardownModes();
-    const { rec, forkStep } = tp;
+    const { rec, forkStep, newMoves } = tp;
     tryplayState = null;
     currentMode = "replay";
-    replayState = { rec, step: forkStep, playing: false, timer: null, follow: true, fixed: 0 };
+    let targetRec = dealRecord;
+    let step = forkStep;
+    if (target === "branch") {
+      targetRec = rec;
+      const end = Math.min(forkStep + newMoves, rec.moves.length);
+      step = end >= rec.moves.length ? end - 1 : end;
+    } else {
+      tryplayRec = null;
+    }
+    replayState = { rec: targetRec, step, playing: false, timer: null, follow: true, fixed: 0 };
+    ui.setHighlightSeat(0);
+    const isBranch = target === "branch";
+    ui.setNewButton(isBranch ? "\u8FD4\u56DE" : "\u65B0\u5C40");
+    ui.onNewGame = isBranch ? returnToOriginalRecord : originalOnNewGame;
+    ui.enterReplay();
+    renderReplayStep();
+  }
+  function returnToOriginalRecord() {
+    const s = replayState;
+    if (!s || s.rec === dealRecord) return;
+    const forkStep = s.rec.forkStep ?? 0;
+    tryplayRec = null;
+    replayState = { rec: dealRecord, step: forkStep, playing: false, timer: null, follow: true, fixed: 0 };
     ui.setHighlightSeat(0);
     ui.setNewButton("\u65B0\u5C40");
     ui.onNewGame = originalOnNewGame;
-    ui.enterReplay();
     renderReplayStep();
   }
   function tryPlayStep(step) {
@@ -7022,12 +7112,14 @@
     if (g.gameState !== "playing") return;
     stopAutoPlay();
     const humanSeat = g.currentTurn;
+    const rec = resolveTryplayRecord(s.rec, step);
     ui.exitReplay();
     currentMode = "tryplay";
-    tryplayState = { rec: s.rec, forkStep: step, humanSeat };
+    tryplayState = { rec, forkStep: step, humanSeat, newMoves: 0 };
     ui.setNewButton("\u8FD4\u56DE");
-    ui.onNewGame = () => returnToReplay();
-    runTryPlayDeal(s.rec, step, humanSeat, true);
+    ui.onNewGame = () => returnToReplay("original");
+    ui.mountTryplayBack();
+    runTryPlayDeal(rec, step, humanSeat, true);
   }
   async function runTryPlayDeal(rec, forkStep, humanSeat, allHuman = false) {
     const g = buildReplayGame(rec, forkStep);
@@ -7057,7 +7149,7 @@
     ui.setTurnInfo(`\u8BD5\u6253\u4E2D\uFF08\u63A5\u7BA1 ${POS_NAMES[humanSeat]}\uFF09...`);
     const onDealOver = (data) => {
       const { html, title } = buildDealOverHtml(data, 1, false, ui);
-      const fullHtml = html + '<div class="modal-actions"><button id="btn-return-replay" class="btn-new-game">\u8FD4\u56DE\u539F\u59CB\u590D\u76D8</button></div>';
+      const fullHtml = html + '<div class="modal-actions"><button id="btn-return-replay" class="btn-new-game">\u8FD4\u56DE\u590D\u76D8</button></div>';
       ui.showDealOver(fullHtml, title);
       const btn = document.getElementById("btn-return-replay");
       if (btn) btn.onclick = () => {
@@ -7066,7 +7158,7 @@
           eventBus.off("deal_over", tryplayDealOverHandler);
           tryplayDealOverHandler = null;
         }
-        returnToReplay();
+        returnToReplay("branch");
       };
     };
     tryplayDealOverHandler = onDealOver;

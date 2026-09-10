@@ -131,7 +131,7 @@ body {
   border-radius: 8px;
   cursor: pointer;
   font-size: 13px;
-  padding: 5px 12px;
+  padding: 3px 8px;
   color: var(--text);
   background: var(--btn-bg);
   transition: background .15s, box-shadow .15s, transform .1s;
@@ -242,7 +242,7 @@ body {
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 3px;
   align-items: stretch;
   justify-content: center;
 }
@@ -689,6 +689,20 @@ body {
 .candidate-panel-head .ghost-btn {
   padding: 3px 10px;
   font-size: 12px;
+}
+/* 试打时动态插入的「回退」按钮：贴到「关闭」左边 */
+#btn-tryplay-back {
+  margin-left: auto;
+  margin-right: 6px;
+}
+#btn-tryplay-back:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+/* 试打时右上角「返回」与「回退」同步置灰 */
+#btn-new:disabled {
+  opacity: .5;
+  cursor: not-allowed;
 }
 #candidate-list {
   flex: 1 1 auto;
